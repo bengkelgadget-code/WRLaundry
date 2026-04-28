@@ -122,7 +122,13 @@ function initCustomerAutocomplete() {
                 searchField: ['nama', 'hp'], 
                 options: JSON.parse(JSON.stringify(custOptions)), 
                 maxItems: 1, 
-                create: true, 
+                // ZETTBOT FIX: Custom Create function untuk menghindari data hilang saat dienter
+                create: function(input) {
+                    var newOpt = { id: 'AUTO' };
+                    newOpt[isNama ? 'nama' : 'hp'] = input;
+                    newOpt[!isNama ? 'nama' : 'hp'] = input;
+                    return newOpt;
+                }, 
                 createOnBlur: false, 
                 persist: false, 
                 selectOnTab: true, 
@@ -160,13 +166,23 @@ function initCustomerAutocomplete() {
                             if (targetOpt) {
                                 var val = targetOpt.getAttribute('data-value');
                                 if (targetOpt.classList.contains('create')) { 
-                                    if(currentInput) { this.createItem(currentInput); this.setValue(currentInput); } 
+                                    if(currentInput) { 
+                                        var newOpt = { id: 'AUTO' };
+                                        newOpt[isNama ? 'nama' : 'hp'] = currentInput;
+                                        newOpt[!isNama ? 'nama' : 'hp'] = currentInput;
+                                        this.addOption(newOpt);
+                                        this.setValue(currentInput);
+                                    } 
                                 } else if (val) { 
                                     this.setValue(val); 
                                 }
                             }
                         } else if (currentInput) {
-                            this.createItem(currentInput); this.setValue(currentInput);
+                            var newOpt = { id: 'AUTO' };
+                            newOpt[isNama ? 'nama' : 'hp'] = currentInput;
+                            newOpt[!isNama ? 'nama' : 'hp'] = currentInput;
+                            this.addOption(newOpt);
+                            this.setValue(currentInput);
                         }
                         this.close(); this.blur(); 
                     }
@@ -256,8 +272,14 @@ function initCustomerAutocomplete() {
                             togglePotongKuotaOption(false, false);
                             
                             this.close();
+                            
+                            // ZETTBOT FIX: Jika input Nama Baru -> Fokus ke HP. Jika input HP Baru -> Fokus ke Layanan
                             setTimeout(function() { 
-                                if(companionTs) { companionTs.focus(); } 
+                                if (isNama) {
+                                    if(companionTs) { companionTs.focus(); } 
+                                } else {
+                                    if(tsInstances['staff-srv-select-1']) { tsInstances['staff-srv-select-1'].focus(); }
+                                }
                             }, 100);
                         }
 
