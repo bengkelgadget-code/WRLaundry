@@ -19,15 +19,15 @@ if (typeof google === 'undefined') {
                     updateRecord: function(sheet, id, data) { this._doFetch('updateRecord', {sheetName: sheet, id: id, data: data}); return this; },
                     deleteRecord: function(sheet, id) { this._doFetch('deleteRecord', {sheetName: sheet, id: id}); return this; },
                     
-                    // ZETTBOT FIX: Multi-Compatibility agar tidak error apapun penulisan di script-pos.js
+                    // ZETTBOT FIX: Menyelaraskan pengiriman nama action ke Google menjadi saveTransaksiStaff
                     saveTransAksiStaff: function(p1, p2) {
                         var payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
-                        this._doFetch('saveTransAksiStaff', payload);
+                        this._doFetch('saveTransaksiStaff', payload);
                         return this;
                     },
                     saveTransaksiStaff: function(p1, p2) {
                         var payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
-                        this._doFetch('saveTransAksiStaff', payload);
+                        this._doFetch('saveTransaksiStaff', payload);
                         return this;
                     },
                     updateTransaksiStaffStatus: function(id, status, pmbStatus, sisaBayar) {
