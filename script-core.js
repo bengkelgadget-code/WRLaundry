@@ -73,6 +73,25 @@ var masterConfig = {
 };
 
 // UTILITIES
+// ZETTBOT PRO FIX: Pindah ke Core agar tidak crash saat STAFF login
+function resolvePelanggan(id) {
+    var cust = (appData.pelanggan || []).find(function(c) { return String(c['ID']) === String(id); });
+    if (cust) return { nama: cust['Nama Pelanggan'], hp: cust['No Telpon'] };
+    return { nama: 'Unknown / Dihapus', hp: '-' };
+}
+
+function resolveLayananNameForProduksi(layananRaw) {
+    if (!layananRaw) return '-';
+    try {
+        var items = JSON.parse(layananRaw);
+        var arr = [];
+        items.forEach(function(item) { arr.push(item.nama + ' (' + item.qty + ' ' + item.satuan + ')'); });
+        return arr.join(', ');
+    } catch(e) {
+        return String(layananRaw).replace(/\+/g, ', ');
+    }
+}
+
 function showLoading(show) { 
     var el = document.getElementById('loading'); if (!el) return; 
     if(show) { el.classList.remove('hidden', 'opacity-0'); } 
@@ -324,19 +343,14 @@ function saveSettings() {
 document.addEventListener('DOMContentLoaded', function() {
     applySettings(); 
     
-    // ZETTBOT PRO FIX: Safety check jika script JS lain gagal dimuat karena syntax error
     if (typeof generateDynamicViews === 'function') {
         generateDynamicViews(); 
     } else {
-        console.error("ZettBOT Warning: generateDynamicViews tidak ditemukan. Pastikan file script-admin.js & script-pos.js tidak mengandung tag HTML <script>.");
-        setTimeout(function() {
-            showLoading(false);
-            showToast("Sistem gagal dimuat. Cek file JS Anda!", "error");
-        }, 1000);
+        console.error("ZettBOT Warning: generateDynamicViews tidak ditemukan.");
+        setTimeout(function() { showLoading(false); showToast("Sistem gagal dimuat. Cek file JS Anda!", "error"); }, 1000);
     }
     
     fetchInitialData();
-    
     makeTextFlexible('dash-pendapatan');
     
     var modalScrollArea = document.getElementById('staff-modal-scroll-area');
@@ -346,9 +360,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') {
                 setTimeout(function() { 
                     var wrapper = target.closest('[id^="staff-srv-row-"]') || target.closest('.mb-4') || target; 
-                    if (wrapper) {
-                        wrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                    }
+                    if (wrapper) { wrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
                 }, 400); 
             }
         }, true);
@@ -362,8 +374,27 @@ function fetchInitialData() {
     if (typeof google !== 'undefined' && google.script && google.script.run) {
         google.script.run.withSuccessHandler(function(response) {
             if(response && response.pelanggan) { response.pelanggan = response.pelanggan.map(function(p) { if(p['No Telpon']) { var hpStr = String(p['No Telpon']); if(hpStr.startsWith("'")) { hpStr = hpStr.substring(1); } p['No Telpon'] = hpStr; } return p; }); }
+            
             appData = response || {produksi:[], pelanggan:[], waktu:[], kiloan:[], satuan:[], pewangi:[], member:[], users:[]};
+            
+            // ZETTBOT FIX: Safety Array defaults agar tidak terjadi null error di map/forEach
+            if (!appData.produksi) appData.produksi = [];
+            if (!appData.pelanggan) appData.pelanggan = [];
+            if (!appData.waktu) appData.waktu = [];
+            if (!appData.kiloan) appData.kiloan = [];
+            if (!appData.satuan) appData.satuan = [];
+            if (!appData.pewangi) appData.pewangi = [];
+            if (!appData.member) appData.member = [];
+            if (!appData.users) appData.users = [];
+            
             showLoading(false);
+            
+            // ZETTBOT PRO FIX: Paksa render ulang UI jika user sudah login saat data tiba
+            if (isLoggedIn) {
+                if (currentUser && currentUser.Role === 'ADMIN') { updateDashboard(); renderAllTables(); }
+                updateAllDropdowns();
+                if (typeof renderStaffTable === 'function') renderStaffTable(true);
+            }
         }).withFailureHandler(function(error) { showLoading(false); showToast("Koneksi Database Gagal", "error"); }).getInitialData();
     } else { setTimeout(function() { showLoading(false); }, 500); }
 }
@@ -436,7 +467,7 @@ function logout() {
     });
 }
 
-// ZETTBOT PRO FIX: Menyelamatkan fungsi navigasi switchView & Menghindari bentrok layout (Tampilan Ganda)
+// ZETTBOT PRO FIX: Menyembunyikan elemen sidebar agar STAFF bisa tampil layar penuh
 function switchView(viewId) {
     document.querySelectorAll('.view-section').forEach(function(el) { el.classList.add('hidden'); el.classList.remove('flex'); });
     var target = document.getElementById('view-' + viewId);
@@ -445,16 +476,22 @@ function switchView(viewId) {
         if (viewId === 'staff') { target.classList.add('flex'); }
     }
     
-    // ZETTBOT FIX: Force Hide menggunakan inline-style agar tidak dikalahkan oleh class Tailwind lainnya
+    // Menyembunyikan Header, Area Scroll Admin, dan MENGHAPUS SIDEBAR untuk tampilan Staff (Kasir)
     var mainHeader = document.getElementById('main-header');
     var adminArea = document.getElementById('admin-scroll-area');
+    var sidebar = document.getElementById('sidebar');
+    var sidebarBackdrop = document.getElementById('sidebar-backdrop');
     
     if (viewId === 'staff') {
         if (mainHeader) { mainHeader.style.display = 'none'; }
         if (adminArea) { adminArea.style.display = 'none'; }
+        if (sidebar) { sidebar.style.display = 'none'; } 
+        if (sidebarBackdrop) { sidebarBackdrop.style.display = 'none'; }
     } else {
         if (mainHeader) { mainHeader.style.display = ''; }
         if (adminArea) { adminArea.style.display = ''; }
+        if (sidebar) { sidebar.style.display = ''; } 
+        if (sidebarBackdrop) { sidebarBackdrop.style.display = ''; }
     }
 
     document.querySelectorAll('.nav-btn').forEach(function(el) { el.classList.remove('!bg-teal-500', '!text-white'); });
@@ -469,8 +506,8 @@ function switchView(viewId) {
         else if (typeof masterConfig !== 'undefined' && masterConfig[viewId]) titleEl.innerText = masterConfig[viewId].title;
     }
     if (window.innerWidth < 768) {
-        var sidebar = document.getElementById('sidebar');
-        if (sidebar && !sidebar.classList.contains('-translate-x-full')) { toggleSidebar(); }
+        var sidebarEl = document.getElementById('sidebar');
+        if (sidebarEl && !sidebarEl.classList.contains('-translate-x-full')) { toggleSidebar(); }
     }
 }
 
