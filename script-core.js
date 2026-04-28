@@ -19,11 +19,9 @@ if (typeof google === 'undefined') {
                     updateRecord: function(sheet, id, data) { this._doFetch('updateRecord', {sheetName: sheet, id: id, data: data}); return this; },
                     deleteRecord: function(sheet, id) { this._doFetch('deleteRecord', {sheetName: sheet, id: id}); return this; },
                     
-                    // ZETTBOT FIX: Penulisan huruf a kecil pada Transaksi disamakan dengan script-pos.js
-                    saveTransaksiStaff: function(payload) { this._doFetch('saveTransaksiStaff', payload); return this; },
-                    updateTransaksiStaffStatus: function(id, status, pmbStatus, sisaBayar) { this._doFetch('updateTransaksiStaffStatus', {id: id, status: status, pmbStatus: pmbStatus, sisaBayar: sisaBayar}); return this; },
-                    // (Cadangan jika ada script lama yang pakai huruf besar)
-                    saveTransAksiStaff: function(payload) { this._doFetch('saveTransaksiStaff', payload); return this; },
+                    // ZETTBOT FIX: Sinkronisasi nama fungsi dengan script-pos.js & penangkapan parameter fileData yang akurat
+                    saveTransaksiStaff: function(recordObj, fileData) { this._doFetch('saveTransaksiStaff', {recordObj: recordObj, fileData: fileData}); return this; },
+                    updateStatusProduksi: function(id, status, pmbStatus) { this._doFetch('updateStatusProduksi', {id: id, status: status, pmbStatus: pmbStatus}); return this; },
                     
                     _doFetch: function(action, payload) {
                         var onSuccess = this._onSuccess;
