@@ -123,12 +123,13 @@ function initCustomerAutocomplete() {
                 options: JSON.parse(JSON.stringify(custOptions)), 
                 maxItems: 1, 
                 create: function(input) {
+                    var upInput = input.toUpperCase(); // ZETTBOT FIX: Enforce UPPERCASE on creation
                     var newOpt = { id: 'AUTO' };
-                    newOpt[isNama ? 'nama' : 'hp'] = input;
-                    newOpt[!isNama ? 'nama' : 'hp'] = input;
+                    newOpt[isNama ? 'nama' : 'hp'] = upInput;
+                    newOpt[!isNama ? 'nama' : 'hp'] = upInput;
                     return newOpt;
                 }, 
-                createOnBlur: true, // ZETTBOT FIX: Pastikan data tercipta aman jika pengguna menyentuh area luar
+                createOnBlur: true, 
                 persist: false, 
                 selectOnTab: true, 
                 openOnFocus: true,
@@ -151,11 +152,10 @@ function initCustomerAutocomplete() {
                     };
                 },
 
-                // ZETTBOT FIX: Cegah tulisan hilang menggunakan `this.createItem()`
                 onKeyDown: function(e) {
                     if(e.key === 'Tab' || e.key === 'Enter') {
                         e.preventDefault();
-                        var currentInput = this.control_input.value.trim();
+                        var currentInput = this.control_input.value.trim().toUpperCase();
 
                         if(this.isOpen) {
                             var targetOpt = this.activeOption;
@@ -227,7 +227,7 @@ function initCustomerAutocomplete() {
                             var infoEl = document.getElementById('staff-member-info'); 
                             var pmbInput = document.getElementById('staff-input-pembayaran');
                             
-                            if (realCust && realCust['Status'] === 'Member') {
+                            if (realCust && realCust && realCust['Status'] === 'Member') {
                                 togglePotongKuotaOption(true, false);
                                 
                                 var sisaKuota = parseFloat(realCust['Sisa Kuota (Kg)'] || 0); var paketName = '-';
@@ -265,7 +265,6 @@ function initCustomerAutocomplete() {
                             
                             this.close();
                             
-                            // ZETTBOT FIX: Jika dari Kolom NAMA -> Fokus ke Kolom HP | Jika dari Kolom HP -> Fokus ke Pilih Layanan.
                             setTimeout(function() { 
                                 if (isNama) {
                                     if(companionTs) { companionTs.focus(); } 
@@ -1080,3 +1079,32 @@ document.addEventListener('touchend', function(e) {
     swipeStartY = 0;
     swipeCurrentY = 0;
 }, {passive: true});
+
+// ============================================================================
+// ZETTBOT PRO: GLOBAL AUTO-UPPERCASE UNTUK SEMUA INPUT TEXT (KECUALI USERS & LOGIN)
+// ============================================================================
+document.addEventListener('input', function(e) {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        var type = e.target.type ? e.target.type.toLowerCase() : '';
+        if (e.target.tagName === 'TEXTAREA' || type === 'text' || type === 'search') {
+            // Pengecualian mutlak untuk form Users dan Form Login
+            if (e.target.closest('#modal-users') || e.target.closest('#form-login')) {
+                return;
+            }
+            
+            var start = e.target.selectionStart;
+            var end = e.target.selectionEnd;
+            var oldVal = e.target.value;
+            var newVal = oldVal.toUpperCase();
+            
+            if (oldVal !== newVal) {
+                e.target.value = newVal;
+                try {
+                    e.target.setSelectionRange(start, end);
+                } catch(err) {
+                    // Abaikan jika tipe input tidak mendukung setSelectionRange
+                }
+            }
+        }
+    }
+});
