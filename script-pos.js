@@ -1010,3 +1010,54 @@ function switchView(viewId) {
         pageTitleEl.innerText = titleText;
     }
 }
+
+// ============================================================================
+// ZETTBOT PRO: FITUR PULL-TO-REFRESH (SWIPE BAWAH) UNTUK LIST TRANSAKSI
+// ============================================================================
+var swipeStartY = 0;
+var swipeCurrentY = 0;
+var isSwipingDown = false;
+
+document.addEventListener('touchstart', function(e) {
+    var staffView = document.getElementById('view-staff');
+    // Hanya aktif jika berada di tampilan kasir (Staff) dan modal transaksi tidak terbuka
+    var txModal = document.getElementById('modal-staff-tx');
+    var isModalOpen = txModal && !txModal.classList.contains('hidden');
+
+    if (!staffView || staffView.classList.contains('hidden') || isModalOpen) return;
+
+    // Mendapatkan scroll container list transaksi
+    var listWrapper = document.getElementById('staff-transaction-list');
+    var scrollContainer = listWrapper ? (listWrapper.closest('.overflow-y-auto') || listWrapper.closest('.overflow-auto') || window) : window;
+    
+    var scrollTop = scrollContainer.scrollTop !== undefined ? scrollContainer.scrollTop : window.scrollY;
+
+    // Hanya aktifkan swipe jika list sedang berada di ujung paling atas
+    if (scrollTop <= 10) {
+        swipeStartY = e.touches[0].clientY;
+        isSwipingDown = true;
+    }
+}, {passive: true});
+
+document.addEventListener('touchmove', function(e) {
+    if (!isSwipingDown) return;
+    swipeCurrentY = e.touches[0].clientY;
+}, {passive: true});
+
+document.addEventListener('touchend', function(e) {
+    if (!isSwipingDown) return;
+    
+    var pullDistance = swipeCurrentY - swipeStartY;
+    
+    // Jika pengguna menarik layar ke bawah lebih dari 100px
+    if (pullDistance > 100 && swipeCurrentY > 0) {
+        if (typeof fetchInitialData === 'function') {
+            showToast("Menyegarkan data transaksi...", "success");
+            fetchInitialData();
+        }
+    }
+    
+    isSwipingDown = false;
+    swipeStartY = 0;
+    swipeCurrentY = 0;
+}, {passive: true});
