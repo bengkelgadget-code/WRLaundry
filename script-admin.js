@@ -1,7 +1,26 @@
-    /**
+/**
      * ZETTBOT - SCRIPT ADMIN
      * Berisi Logika Dashboard, Generator View Dinamis, dan Operasi CRUD Master Data
      */
+
+    // ZETTBOT FIX: Mengamankan Helper Pelanggan & Layanan agar Dashboard tidak crash
+    function resolvePelanggan(id) {
+        var cust = (appData.pelanggan || []).find(function(c) { return String(c['ID']) === String(id); });
+        if (cust) return { nama: cust['Nama Pelanggan'], hp: cust['No Telpon'] };
+        return { nama: 'Unknown / Dihapus', hp: '-' };
+    }
+
+    function resolveLayananNameForProduksi(layananRaw) {
+        if (!layananRaw) return '-';
+        try {
+            var items = JSON.parse(layananRaw);
+            var arr = [];
+            items.forEach(function(item) { arr.push(item.nama + ' (' + item.qty + ' ' + item.satuan + ')'); });
+            return arr.join(', ');
+        } catch(e) {
+            return String(layananRaw).replace(/\+/g, ', ');
+        }
+    }
 
     function generateDynamicViews() {
         var container = document.getElementById('dynamic-view-container'); var modalContainer = document.getElementById('dynamic-modal-container'); if(!container || !modalContainer) return;
