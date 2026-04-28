@@ -1,0 +1,55 @@
+/* BASE RESET & APP LAYOUT */
+html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; height: 100vh !important; height: 100dvh !important; overflow: hidden !important; position: fixed !important; top: 0; left: 0; right: 0; bottom: 0; overscroll-behavior: none !important; background-color: #f8fafc; }
+    *, *:before, *:after { box-sizing: inherit; }
+    #app-root { width: 100%; height: 100%; display: flex; flex-direction: row; overflow: hidden; position: relative; }
+    
+    /* ENHANCED SCROLLBAR UX */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; border: 2px solid transparent; background-clip: content-box; }
+    
+    /* ANIMATIONS */
+    .fade-in { animation: bsFadeIn 0.35s ease-out forwards; }
+    .modal-enter { animation: bsModalShow 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .slide-up-fade { animation: slideUpFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+    @keyframes bsFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes bsModalShow { from { opacity: 0; transform: scale(0.92) translateY(-20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+    @keyframes slideUpFade { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+    
+    /* ZETTBOT SCROLL FIX - CORE LAYOUT RULES */
+    .view-section { display: flex; flex-direction: column; flex: 1 1 0%; min-height: 0; width: 100%; height: 100%; }
+    .view-section.hidden { display: none !important; }
+
+    /* TABLE STYLING & STICKY HEADER FIX */
+    .table-modern { width: 100%; border-collapse: separate; border-spacing: 0; background-color: #ffffff; }
+    .table-modern thead { position: sticky; top: 0; z-index: 20; }
+    .table-modern th { position: sticky; top: 0; background-color: #f8fafc; color: #64748b; font-weight: 900; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; padding: 16px 20px; border-bottom: 2px solid #e2e8f0; white-space: nowrap; text-align: left; z-index: 20; box-shadow: 0 1px 0 #e2e8f0; }
+    .table-modern td { padding: 14px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; font-size: 13px; font-weight: 600; vertical-align: middle; transition: all 0.2s ease; background-color: inherit; }
+    .table-modern tbody tr { transition: all 0.2s ease; background-color: #ffffff; }
+    .table-modern tbody tr:nth-child(even) { background-color: #fafbfc; }
+    .table-modern tbody tr:hover { background-color: #eff6ff; }
+    .table-modern tbody tr:hover td { border-bottom-color: #dbeafe; color: #1e40af; }
+    
+    .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+
+    /* ZETTBOT FIX: TomSelect Dropdown Layering */
+    .ts-wrapper { position: relative; z-index: 1; }
+    .ts-wrapper.focus { z-index: 100 !important; }
+    .ts-control { border-radius: 0.75rem !important; padding: 0.75rem 1rem !important; background-color: #f8fafc !important; border-color: #e2e8f0 !important; font-size: 0.875rem !important; font-weight: 600; box-shadow: none !important; display: flex !important; flex-wrap: nowrap !important; overflow: hidden !important; }
+    .ts-control > input { display: inline-block !important; }
+    .ts-control .item { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .ts-control.focus { border-color: #14b8a6 !important; box-shadow: 0 0 0 2px #ccfbf1 !important; }
+    .ts-dropdown { position: absolute !important; z-index: 99999 !important; border-radius: 0.75rem !important; border-color: #e2e8f0 !important; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1) !important; margin-top: 4px; background: #ffffff !important; }
+    .ts-dropdown .option { padding: 0.6rem 1rem; border-bottom: 1px solid #f1f5f9; }
+    .ts-dropdown .active { background-color: #f0fdfa !important; color: #0d9488 !important; }
+    .ts-dropdown .ts-dropdown-content { max-height: 220px !important; }
+
+    /* Ensure modal sections don't clip dropdown */
+    #modal-staff-tx .slide-up-fade { position: relative; z-index: 5; }
+    #modal-staff-tx .slide-up-fade:focus-within { z-index: 50; }
+    #staff-modal-scroll-area { overflow-x: visible !important; }
+
+    .hidden { display: none !important; }
+    @media screen { #print-area { display: none !important; } }
+@media print { body * { visibility: hidden; } #print-area, #print-area * { visibility: visible; } #print-area { display: block !important; position: absolute; left: 0; top: 0; width: 58mm; padding: 0; margin: 0; font-family: monospace; font-size: 12px; color: black; } .no-print { display: none !important; } @page { margin: 0; size: auto; } }
