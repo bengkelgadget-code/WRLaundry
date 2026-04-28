@@ -1,7 +1,7 @@
 // ZETTBOT BRIDGE: Auto-Switch Backend (GAS / Vercel)
 // ====================================================================
 // PERHATIAN: Masukkan URL Web App (hasil deploy GAS terbaru) Anda di sini!
-const GAS_URL = ""; 
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxB7xCVFJKX28NuPYASvlrWoDgcWM4cR6-101vfJ2x1pyjVaFMGaFfpvHE5SlKpuH4ULQ/exec"; 
 
 if (typeof google === 'undefined') {
         console.log("🌐 Berjalan di Vercel/Eksternal - ZettBridge Aktif!");
