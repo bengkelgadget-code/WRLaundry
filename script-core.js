@@ -391,8 +391,17 @@ if (typeof google === 'undefined') {
         if(document.getElementById('user-profile-role')) { document.getElementById('user-profile-role').innerText = 'ROLE: ' + (user['Role'] || 'STAFF'); }
         if(document.getElementById('user-profile-avatar')) { document.getElementById('user-profile-avatar').innerText = (user['Nama Lengkap'] || 'S').charAt(0); }
         if(user.Role === 'ADMIN') { updateDashboard(); renderAllTables(); }
-        updateAllDropdowns(); renderStaffTable(); 
-        if(user.Role === 'STAFF') { switchView('staff'); } else { switchView('dashboard'); }
+        updateAllDropdowns(); 
+        
+        // ZETTBOT FIX: Safety Check agar aplikasi tidak stuck jika script-pos.js gagal dimuat/kosong
+        if (typeof renderStaffTable === 'function') { 
+            renderStaffTable(); 
+        } else { 
+            console.warn("ZettBOT Warning: renderStaffTable tidak ditemukan. Cek isi file script-pos.js Anda!"); 
+        }
+        
+        if(user.Role === 'STAFF') { switchView('staff'); } 
+        else { switchView('dashboard'); }
     }
 
     function renderSidebarMenu() {
@@ -432,6 +441,31 @@ if (typeof google === 'undefined') {
             var overlay = document.getElementById('login-overlay');
             if(overlay) { overlay.classList.remove('hidden'); overlay.classList.add('flex'); setTimeout(function() { overlay.classList.remove('opacity-0'); }, 10); }
         });
+    }
+
+    // ZETTBOT PRO FIX: Menyelamatkan fungsi navigasi switchView agar selalu tersedia di Core
+    function switchView(viewId) {
+        document.querySelectorAll('.view-section').forEach(function(el) { el.classList.add('hidden'); el.classList.remove('flex'); });
+        var target = document.getElementById('view-' + viewId);
+        if (target) {
+            target.classList.remove('hidden');
+            if (viewId === 'staff') { target.classList.add('flex'); }
+        }
+        document.querySelectorAll('.nav-btn').forEach(function(el) { el.classList.remove('!bg-teal-500', '!text-white'); });
+        var navBtn = document.getElementById('nav-' + viewId);
+        if (navBtn) { navBtn.classList.add('!bg-teal-500', '!text-white'); }
+        
+        var titleEl = document.getElementById('page-title');
+        if (titleEl && viewId !== 'staff') {
+            if (viewId === 'dashboard') titleEl.innerText = 'Dashboard';
+            else if (viewId === 'produksi') titleEl.innerText = 'Data Transaksi';
+            else if (viewId === 'users') titleEl.innerText = 'Kelola User';
+            else if (typeof masterConfig !== 'undefined' && masterConfig[viewId]) titleEl.innerText = masterConfig[viewId].title;
+        }
+        if (window.innerWidth < 768) {
+            var sidebar = document.getElementById('sidebar');
+            if (sidebar && !sidebar.classList.contains('-translate-x-full')) { toggleSidebar(); }
+        }
     }
 
     function toggleSidebar() { 
