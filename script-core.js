@@ -329,7 +329,18 @@ if (typeof google === 'undefined') {
     // INITIALIZATION & RENDER
     document.addEventListener('DOMContentLoaded', function() {
         applySettings(); 
-        generateDynamicViews(); 
+        
+        // ZETTBOT PRO FIX: Safety check jika script JS lain gagal dimuat karena syntax error
+        if (typeof generateDynamicViews === 'function') {
+            generateDynamicViews(); 
+        } else {
+            console.error("ZettBOT Warning: generateDynamicViews tidak ditemukan. Pastikan file script-admin.js & script-pos.js tidak mengandung tag HTML <script>.");
+            setTimeout(function() {
+                showLoading(false);
+                showToast("Sistem gagal dimuat. Cek file JS Anda!", "error");
+            }, 1000);
+        }
+        
         fetchInitialData();
         
         makeTextFlexible('dash-pendapatan');
