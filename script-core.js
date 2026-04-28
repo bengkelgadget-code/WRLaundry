@@ -157,7 +157,6 @@ function makeTextFlexible(elementId) {
     window.addEventListener('resize', function() { setTimeout(resizeFont, 50); });
 }
 
-// ZETTBOT PRO: Logika Paginasi & Generator Tombol (Diperbaiki agar selalu muncul)
 function changePage(view, newPage) {
     if (pageConfig[view]) {
         pageConfig[view].page = newPage;
@@ -169,11 +168,10 @@ function changePage(view, newPage) {
     }
 }
 
-// ZETTBOT FIX: Fungsi baru untuk mengubah batas limit data per halaman
 function changeLimit(view, newLimit) {
     if (pageConfig[view]) {
         pageConfig[view].limit = parseInt(newLimit);
-        pageConfig[view].page = 1; // Reset ke halaman 1 setiap ganti limit
+        pageConfig[view].page = 1; 
         if (view === 'Staff') {
             if (typeof renderStaffTable === 'function') renderStaffTable(true);
         } else {
@@ -187,13 +185,10 @@ function generatePaginationHTML(view, totalItems) {
     var currentPage = pageConfig[view].page;
     var totalPages = Math.ceil(totalItems / limit);
     
-    // Koreksi halaman jika melebihi total
     if (currentPage > totalPages && totalPages > 0) { pageConfig[view].page = 1; currentPage = 1; }
 
-    // ZETTBOT FIX: Layout paginasi dirombak agar lebih responsif, tidak tertelan CSS, dan ada opsi Limit Baris
     var html = '<div class="flex flex-col sm:flex-row items-center justify-between w-full px-4 py-3 sm:py-3.5 bg-slate-50 border-t border-slate-200 rounded-b-2xl shrink-0 gap-3 relative z-[30] shadow-[0_-4px_10px_-4px_rgba(0,0,0,0.05)]">';
 
-    // KIRI: Info Halaman & Dropdown Limit
     html += '<div class="flex items-center justify-between sm:justify-start w-full sm:w-auto gap-3">';
     html += '<div class="text-[11px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">Hal <span class="font-black text-teal-600">' + currentPage + '</span> / ' + Math.max(1, totalPages) + '</div>';
     
@@ -207,7 +202,6 @@ function generatePaginationHTML(view, totalItems) {
     html += '</div>';
     html += '</div>';
 
-    // KANAN: Tombol Navigasi Prev/Next
     html += '<div class="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-2">';
     html += '<p class="text-[10px] font-bold text-slate-400 uppercase hidden md:block mr-2">Total: <span class="text-slate-600">' + totalItems + ' Data</span></p>';
 
@@ -393,7 +387,6 @@ function executeLogin(user) {
     if(user.Role === 'ADMIN') { updateDashboard(); renderAllTables(); }
     updateAllDropdowns(); 
     
-    // ZETTBOT FIX: Safety Check agar aplikasi tidak stuck jika script-pos.js gagal dimuat/kosong
     if (typeof renderStaffTable === 'function') { 
         renderStaffTable(); 
     } else { 
@@ -452,15 +445,16 @@ function switchView(viewId) {
         if (viewId === 'staff') { target.classList.add('flex'); }
     }
     
-    // ZETTBOT FIX: Menyembunyikan Header Admin & Scroll Area saat masuk ke menu Kasir (STAFF)
+    // ZETTBOT FIX: Force Hide menggunakan inline-style agar tidak dikalahkan oleh class Tailwind lainnya
     var mainHeader = document.getElementById('main-header');
     var adminArea = document.getElementById('admin-scroll-area');
+    
     if (viewId === 'staff') {
-        if (mainHeader) mainHeader.classList.add('hidden');
-        if (adminArea) { adminArea.classList.add('hidden'); adminArea.classList.remove('flex'); }
+        if (mainHeader) { mainHeader.style.display = 'none'; }
+        if (adminArea) { adminArea.style.display = 'none'; }
     } else {
-        if (mainHeader) mainHeader.classList.remove('hidden');
-        if (adminArea) { adminArea.classList.remove('hidden'); adminArea.classList.add('flex'); }
+        if (mainHeader) { mainHeader.style.display = ''; }
+        if (adminArea) { adminArea.style.display = ''; }
     }
 
     document.querySelectorAll('.nav-btn').forEach(function(el) { el.classList.remove('!bg-teal-500', '!text-white'); });
