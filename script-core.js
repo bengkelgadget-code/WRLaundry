@@ -22,30 +22,53 @@ if (typeof google === 'undefined') {
                         var onSuccess = this._onSuccess;
                         var onFailure = this._onFailure;
                         
-                        if(!GAS_URL) { console.error("GAS_URL KOSONG!"); if(onFailure) onFailure("GAS_URL belum diisi. Hubungi Developer."); return; }
+                        if(!GAS_URL) { 
+                            console.error("GAS_URL KOSONG!"); 
+                            if(onFailure) setTimeout(function() { onFailure("GAS_URL belum diisi. Hubungi Developer."); }, 0); 
+                            return; 
+                        }
                         
-                        // ZETTBOT PRO FIX: Bypass CORS Preflight dengan text/plain agar respon server 2x lebih cepat
-                        fetch(GAS_URL, { 
+                        // ZETTBOT PRO FIX: Safety Timeout & Error Decoupling (Anti-Stuck & Anti-Silent Error)
+                        var controller = null;
+                        var timeoutId = null;
+                        var fetchOptions = { 
                             method: 'POST', 
                             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                            body: JSON.stringify({ action: action, payload: payload }) 
-                        })
+                            body: JSON.stringify({ action: action, payload: payload })
+                        };
+
+                        if (window.AbortController) {
+                            controller = new AbortController();
+                            fetchOptions.signal = controller.signal;
+                            timeoutId = setTimeout(function() { controller.abort(); }, 45000); // 45 Detik maksimal loading
+                        }
+                        
+                        fetch(GAS_URL, fetchOptions)
                         .then(function(res) { 
-                            if(!res.ok) throw new Error("HTTP " + res.status);
+                            if (timeoutId) clearTimeout(timeoutId);
+                            if(!res.ok) throw new Error("Gagal terhubung ke Server (HTTP " + res.status + ")");
                             return res.text(); 
                         })
                         .then(function(text) {
+                            var data;
                             try {
-                                var data = JSON.parse(text);
-                                if(onSuccess) onSuccess(data);
+                                data = JSON.parse(text);
                             } catch(e) {
                                 console.error("ZettBridge Parse Error:", text);
-                                if(onFailure) onFailure("Respon dari server tidak valid.");
+                                if(onFailure) setTimeout(function() { onFailure("Respon dari server gagal dibaca. Coba lagi."); }, 0);
+                                return;
                             }
+                            // PENTING: Mengeksekusi callback di luar promise agar jika error UI, tidak tertelan dan membuat STUCK!
+                            if(onSuccess) setTimeout(function() { onSuccess(data); }, 0);
                         })
                         .catch(function(err) { 
+                            if (timeoutId) clearTimeout(timeoutId);
                             console.error("ZettBridge Fetch Error:", err);
-                            if(onFailure) onFailure(err.toString()); 
+                            if (err.name === 'AbortError') {
+                                if(onFailure) setTimeout(function() { onFailure("Koneksi lambat (Timeout). Silakan coba lagi."); }, 0);
+                            } else {
+                                if(onFailure) setTimeout(function() { onFailure(err.message || "Gagal menghubungi server."); }, 0);
+                            }
                         });
                     }
                 };
