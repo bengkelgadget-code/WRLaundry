@@ -123,7 +123,7 @@ function initCustomerAutocomplete() {
                 options: JSON.parse(JSON.stringify(custOptions)), 
                 maxItems: 1, 
                 create: function(input) {
-                    var upInput = input.toUpperCase(); // ZETTBOT FIX: Enforce UPPERCASE on creation
+                    var upInput = input.toUpperCase();
                     var newOpt = { id: 'AUTO' };
                     newOpt[isNama ? 'nama' : 'hp'] = upInput;
                     newOpt[!isNama ? 'nama' : 'hp'] = upInput;
@@ -215,7 +215,6 @@ function initCustomerAutocomplete() {
                         var match = isNama ? custOptions.find(function(c) { return c.nama === value; }) : custOptions.find(function(c) { return c.hp === value; });
                         
                         if (match) {
-                            // JIKA DATABASE COCOK
                             if (companionTs) { 
                                 companionTs.addOption({id: match.id, hp: match.hp, nama: match.nama}); 
                                 var valToSet = isNama ? match.hp : match.nama; 
@@ -257,7 +256,6 @@ function initCustomerAutocomplete() {
                             }, 150);
 
                         } else {
-                            // JIKA DATABASE TIDAK COCOK (PELANGGAN BARU)
                             if (companionTs) { companionTs.enable(); }
                             document.getElementById('staff-member-info').classList.add('hidden'); 
                             document.getElementById('staff-member-info').classList.remove('flex'); 
@@ -856,19 +854,41 @@ function generateRawTextReceipt(px) {
     return str;
 }
 
-// ZETTBOT PRO FIX: FUNGSI CETAK BLUETOOTH LANGSUNG ANTI-PDF
+// ZETTBOT PRO FIX: Global Variabel untuk menampung koneksi printer
+window.zettConnectedPrinter = window.zettConnectedPrinter || null;
+
+// ZETTBOT PRO FIX: FUNGSI CETAK BLUETOOTH LANGSUNG ANTI-PDF (DENGAN CACHE KONEKSI)
 async function actionPrintReceipt() {
     if(!currentSavedTx) return;
 
-    // 1. Mencoba Koneksi Bluetooth & Streaming Data Langsung (Bypass PDF)
     if (navigator.bluetooth) {
         try {
-            var btDevice = await navigator.bluetooth.requestDevice({
-                acceptAllDevices: true,
-                optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2']
-            });
+            var btDevice = window.zettConnectedPrinter;
+            
+            // Jika belum ada printer yang tersimpan di memori sesi ini, tampilkan Pop-up pilihan
+            if (!btDevice) {
+                btDevice = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2']
+                });
+                window.zettConnectedPrinter = btDevice; // Simpan printer ke memori browser
+            }
+
             showToast("Menghubungkan ke " + btDevice.name + "...");
-            var server = await btDevice.gatt.connect();
+            var server;
+            
+            try {
+                server = await btDevice.gatt.connect();
+            } catch (connErr) {
+                // Jika gagal auto-reconnect (misal printer mati/jauh), minta ulang
+                console.log("Auto-reconnect gagal, meminta ulang device...", connErr);
+                btDevice = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2']
+                });
+                window.zettConnectedPrinter = btDevice;
+                server = await btDevice.gatt.connect();
+            }
 
             var service = null; var characteristic = null;
             var serviceUuids = ['000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2'];
@@ -890,15 +910,19 @@ async function actionPrintReceipt() {
             }
 
             showToast("Nota berhasil dicetak langsung ke Mesin!");
+            
+            // Disconnect agar aman dan hemat daya. Cache device tetap ada di window.zettConnectedPrinter
             setTimeout(function() { btDevice.gatt.disconnect(); }, 2000);
             return; 
 
         } catch(e) {
             console.error("Web Bluetooth Error:", e);
+            window.zettConnectedPrinter = null; // Hapus cache jika batal atau error total
+            
             if (e.name !== 'NotFoundError') {
                 showToast("Cetak langsung ditolak printer. Membuka opsi sistem PDF...", "warning");
             } else {
-                return; 
+                return; // User menekan batal pada dialog bluetooth
             }
         }
     }
