@@ -7,21 +7,48 @@ if (typeof google === 'undefined') {
     console.log("🌐 Berjalan di Vercel/Eksternal - ZettBridge Aktif!");
     window.google = {
         script: {
-            run: {
-                withSuccessHandler: function(onSuccess) { this._onSuccess = onSuccess; return this; },
-                withFailureHandler: function(onFailure) { this._onFailure = onFailure; return this; },
-                getInitialData: function() { this._doFetch('getInitialData', {}); return this; },
-                saveRecord: function(sheet, data) { this._doFetch('saveRecord', {sheetName: sheet, data: data}); return this; },
-                updateRecord: function(sheet, id, data) { this._doFetch('updateRecord', {sheetName: sheet, id: id, data: data}); return this; },
-                deleteRecord: function(sheet, id) { this._doFetch('deleteRecord', {sheetName: sheet, id: id}); return this; },
-                _doFetch: function(action, payload) {
-                    var self = this;
-                    if(!GAS_URL) { console.error("GAS_URL KOSONG!"); if(self._onFailure) self._onFailure("GAS_URL belum diisi. Hubungi Developer."); return; }
-                    fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: action, payload: payload }) })
-                    .then(function(res) { return res.json(); })
-                    .then(function(data) { if(self._onSuccess) self._onSuccess(data); })
-                    .catch(function(err) { if(self._onFailure) self._onFailure(err); });
-                }
+            // ZETTBOT PRO FIX: Menggunakan getter agar setiap pemanggilan adalah sesi baru yang independen (Anti-Tabrakan Callback)
+            get run() {
+                return {
+                    _onSuccess: null,
+                    _onFailure: null,
+                    withSuccessHandler: function(cb) { this._onSuccess = cb; return this; },
+                    withFailureHandler: function(cb) { this._onFailure = cb; return this; },
+                    getInitialData: function() { this._doFetch('getInitialData', {}); return this; },
+                    saveRecord: function(sheet, data) { this._doFetch('saveRecord', {sheetName: sheet, data: data}); return this; },
+                    updateRecord: function(sheet, id, data) { this._doFetch('updateRecord', {sheetName: sheet, id: id, data: data}); return this; },
+                    deleteRecord: function(sheet, id) { this._doFetch('deleteRecord', {sheetName: sheet, id: id}); return this; },
+                    _doFetch: function(action, payload) {
+                        var onSuccess = this._onSuccess;
+                        var onFailure = this._onFailure;
+                        
+                        if(!GAS_URL) { console.error("GAS_URL KOSONG!"); if(onFailure) onFailure("GAS_URL belum diisi. Hubungi Developer."); return; }
+                        
+                        // ZETTBOT PRO FIX: Bypass CORS Preflight dengan text/plain agar respon server 2x lebih cepat
+                        fetch(GAS_URL, { 
+                            method: 'POST', 
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({ action: action, payload: payload }) 
+                        })
+                        .then(function(res) { 
+                            if(!res.ok) throw new Error("HTTP " + res.status);
+                            return res.text(); 
+                        })
+                        .then(function(text) {
+                            try {
+                                var data = JSON.parse(text);
+                                if(onSuccess) onSuccess(data);
+                            } catch(e) {
+                                console.error("ZettBridge Parse Error:", text);
+                                if(onFailure) onFailure("Respon dari server tidak valid.");
+                            }
+                        })
+                        .catch(function(err) { 
+                            console.error("ZettBridge Fetch Error:", err);
+                            if(onFailure) onFailure(err.toString()); 
+                        });
+                    }
+                };
             }
         }
     };
@@ -73,7 +100,6 @@ var masterConfig = {
 };
 
 // UTILITIES
-// ZETTBOT PRO FIX: Pindah ke Core agar tidak crash saat STAFF login
 function resolvePelanggan(id) {
     var cust = (appData.pelanggan || []).find(function(c) { return String(c['ID']) === String(id); });
     if (cust) return { nama: cust['Nama Pelanggan'], hp: cust['No Telpon'] };
@@ -377,7 +403,6 @@ function fetchInitialData() {
             
             appData = response || {produksi:[], pelanggan:[], waktu:[], kiloan:[], satuan:[], pewangi:[], member:[], users:[]};
             
-            // ZETTBOT FIX: Safety Array defaults agar tidak terjadi null error di map/forEach
             if (!appData.produksi) appData.produksi = [];
             if (!appData.pelanggan) appData.pelanggan = [];
             if (!appData.waktu) appData.waktu = [];
@@ -389,7 +414,6 @@ function fetchInitialData() {
             
             showLoading(false);
             
-            // ZETTBOT PRO FIX: Paksa render ulang UI jika user sudah login saat data tiba
             if (isLoggedIn) {
                 if (currentUser && currentUser.Role === 'ADMIN') { updateDashboard(); renderAllTables(); }
                 updateAllDropdowns();
@@ -467,7 +491,6 @@ function logout() {
     });
 }
 
-// ZETTBOT PRO FIX: Menyembunyikan elemen sidebar agar STAFF bisa tampil layar penuh
 function switchView(viewId) {
     document.querySelectorAll('.view-section').forEach(function(el) { el.classList.add('hidden'); el.classList.remove('flex'); });
     var target = document.getElementById('view-' + viewId);
@@ -476,7 +499,6 @@ function switchView(viewId) {
         if (viewId === 'staff') { target.classList.add('flex'); }
     }
     
-    // Menyembunyikan Header, Area Scroll Admin, dan MENGHAPUS SIDEBAR untuk tampilan Staff (Kasir)
     var mainHeader = document.getElementById('main-header');
     var adminArea = document.getElementById('admin-scroll-area');
     var sidebar = document.getElementById('sidebar');
