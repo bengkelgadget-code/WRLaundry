@@ -122,14 +122,13 @@ function initCustomerAutocomplete() {
                 searchField: ['nama', 'hp'], 
                 options: JSON.parse(JSON.stringify(custOptions)), 
                 maxItems: 1, 
-                // ZETTBOT FIX: Custom Create function untuk menghindari data hilang saat dienter
                 create: function(input) {
                     var newOpt = { id: 'AUTO' };
                     newOpt[isNama ? 'nama' : 'hp'] = input;
                     newOpt[!isNama ? 'nama' : 'hp'] = input;
                     return newOpt;
                 }, 
-                createOnBlur: false, 
+                createOnBlur: true, // ZETTBOT FIX: Pastikan data tercipta aman jika pengguna menyentuh area luar
                 persist: false, 
                 selectOnTab: true, 
                 openOnFocus: true,
@@ -152,6 +151,7 @@ function initCustomerAutocomplete() {
                     };
                 },
 
+                // ZETTBOT FIX: Cegah tulisan hilang menggunakan `this.createItem()`
                 onKeyDown: function(e) {
                     if(e.key === 'Tab' || e.key === 'Enter') {
                         e.preventDefault();
@@ -166,23 +166,13 @@ function initCustomerAutocomplete() {
                             if (targetOpt) {
                                 var val = targetOpt.getAttribute('data-value');
                                 if (targetOpt.classList.contains('create')) { 
-                                    if(currentInput) { 
-                                        var newOpt = { id: 'AUTO' };
-                                        newOpt[isNama ? 'nama' : 'hp'] = currentInput;
-                                        newOpt[!isNama ? 'nama' : 'hp'] = currentInput;
-                                        this.addOption(newOpt);
-                                        this.setValue(currentInput);
-                                    } 
+                                    if(currentInput) { this.createItem(currentInput); } 
                                 } else if (val) { 
                                     this.setValue(val); 
                                 }
                             }
                         } else if (currentInput) {
-                            var newOpt = { id: 'AUTO' };
-                            newOpt[isNama ? 'nama' : 'hp'] = currentInput;
-                            newOpt[!isNama ? 'nama' : 'hp'] = currentInput;
-                            this.addOption(newOpt);
-                            this.setValue(currentInput);
+                            this.createItem(currentInput);
                         }
                         this.close(); this.blur(); 
                     }
@@ -225,6 +215,7 @@ function initCustomerAutocomplete() {
                         var match = isNama ? custOptions.find(function(c) { return c.nama === value; }) : custOptions.find(function(c) { return c.hp === value; });
                         
                         if (match) {
+                            // JIKA DATABASE COCOK
                             if (companionTs) { 
                                 companionTs.addOption({id: match.id, hp: match.hp, nama: match.nama}); 
                                 var valToSet = isNama ? match.hp : match.nama; 
@@ -263,9 +254,10 @@ function initCustomerAutocomplete() {
                             this.close();
                             setTimeout(function() { 
                                 if(tsInstances['staff-srv-select-1']) { tsInstances['staff-srv-select-1'].focus(); } 
-                            }, 100);
+                            }, 150);
 
                         } else {
+                            // JIKA DATABASE TIDAK COCOK (PELANGGAN BARU)
                             if (companionTs) { companionTs.enable(); }
                             document.getElementById('staff-member-info').classList.add('hidden'); 
                             document.getElementById('staff-member-info').classList.remove('flex'); 
@@ -273,14 +265,19 @@ function initCustomerAutocomplete() {
                             
                             this.close();
                             
-                            // ZETTBOT FIX: Jika input Nama Baru -> Fokus ke HP. Jika input HP Baru -> Fokus ke Layanan
+                            // ZETTBOT FIX: Jika dari Kolom NAMA -> Fokus ke Kolom HP | Jika dari Kolom HP -> Fokus ke Pilih Layanan.
                             setTimeout(function() { 
                                 if (isNama) {
                                     if(companionTs) { companionTs.focus(); } 
                                 } else {
-                                    if(tsInstances['staff-srv-select-1']) { tsInstances['staff-srv-select-1'].focus(); }
+                                    if(tsInstances['staff-srv-select-1']) { 
+                                        tsInstances['staff-srv-select-1'].focus(); 
+                                    } else {
+                                        var fbEl = document.getElementById('staff-srv-select-1');
+                                        if (fbEl) fbEl.focus();
+                                    }
                                 }
-                            }, 100);
+                            }, 150);
                         }
 
                     } catch(e) { console.error("Autocomplete Error: ", e); }
