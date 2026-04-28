@@ -1,3 +1,4 @@
+<script>
     /**
      * ZETTBOT - SCRIPT POS & TRANSAKSI
      * Berisi Logika Kasir, Form Transaksi Dinamis, Generator Struk Thermal, dan Cetak Bluetooth/WA
@@ -440,13 +441,8 @@
     }
 
     function validateStaffForm() {
-        // ZETTBOT PRO FIX: Footer selalu dimunculkan agar "Total Biaya" 
-        // terlihat real-time saat layanan dipilih, tanpa menunggu foto & data lengkap.
         var footer = document.getElementById('staff-footer-action');
-        if(footer) { 
-            footer.classList.remove('hidden'); 
-            footer.classList.add('flex'); 
-        }
+        if(footer) { footer.classList.remove('hidden'); footer.classList.add('flex'); }
     }
 
     function submitStaffTransaction() {
@@ -705,14 +701,121 @@
 
     function showSuccessModal() { var modal = document.getElementById('modal-success-print'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); } }
 
+    // ZETTBOT PRO: GENERATOR RAW TEXT ESC/POS UNTUK CETAK BLUETOOTH LANGSUNG
+    function generateRawTextReceipt(px) {
+        var str = "";
+        var center = function(txt) { var pad = Math.max(0, Math.floor((32 - txt.length) / 2)); return " ".repeat(pad) + txt + "\n"; };
+        var splitKV = function(k, v) { var space = Math.max(1, 32 - k.length - String(v).length); return k + " ".repeat(space) + v + "\n"; };
+
+        str += center(appSettings.nama.toUpperCase());
+        str += center((appSettings.alamat||'').substring(0, 32));
+        str += "--------------------------------\n";
+        str += splitKV("Nota", (px['No Nota'] || '-'));
+        str += splitKV("Tgl", (px['Waktu Masuk'] ? String(px['Waktu Masuk']).split(' ')[0] : '-'));
+        var kasirName = (currentUser && currentUser['Nama Lengkap']) ? currentUser['Nama Lengkap'] : 'Admin';
+        str += splitKV("Kasir", kasirName);
+        str += "--------------------------------\n";
+        str += "Plg: " + (px['Nama Pelanggan'] || '-') + "\n";
+        str += "HP : " + (px['No Telpon'] || '-') + "\n";
+        str += "--------------------------------\n";
+
+        var items = []; var subtotalTx = Number(px['Total Harga'] || 0); var diskonTx = 0;
+        if (px['Detail Layanan JSON']) { try { var parsed = JSON.parse(px['Detail Layanan JSON']); items = Array.isArray(parsed) ? parsed : (parsed.items || []); diskonTx = parsed.diskon || 0; } catch(e) {} }
+
+        if (items.length > 0) {
+            items.forEach(function(item) {
+                str += item.nama + "\n";
+                var line2 = item.qty + " " + item.satuan + " x " + Number(item.subtotal/item.qty).toLocaleString('id-ID');
+                var val2 = "Rp " + Number(item.subtotal).toLocaleString('id-ID');
+                str += splitKV(line2, val2);
+            });
+        } else { str += (px['Layanan'] || '').replace(/\+/g, '\n') + "\n"; }
+        str += "--------------------------------\n";
+
+        var totalHarga = Number(px['Total Harga'] || 0);
+        str += splitKV("TOTAL", "Rp " + totalHarga.toLocaleString('id-ID'));
+        if(diskonTx > 0) str += splitKV("DISKON", "-Rp " + diskonTx.toLocaleString('id-ID'));
+
+        var pmbStatusVal = px['Pembayaran'] || 'Belum Lunas';
+        if (totalHarga === 0 && pmbStatusVal !== 'Lunas') pmbStatusVal = 'Potong Kuota';
+        str += splitKV("STATUS", pmbStatusVal);
+
+        if(pmbStatusVal === 'DP') {
+            str += splitKV("DP", "Rp " + Number(px['DP'] || 0).toLocaleString('id-ID'));
+            str += splitKV("SISA", "Rp " + Number(px['Sisa Bayar'] || 0).toLocaleString('id-ID'));
+        }
+
+        str += "--------------------------------\n";
+        str += center("Terima Kasih");
+        str += "\n\n\n";
+        return str;
+    }
+
+    // ZETTBOT PRO FIX: FUNGSI CETAK BLUETOOTH LANGSUNG ANTI-PDF
     async function actionPrintReceipt() {
         if(!currentSavedTx) return;
+
+        // 1. Mencoba Koneksi Bluetooth & Streaming Data Langsung (Bypass PDF)
         if (navigator.bluetooth) {
             try {
-                var btDevice = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2'] });
-                showToast("Printer dipilih: " + btDevice.name); setTimeout(function() { document.getElementById('print-area').innerHTML = generateReceiptHTML(currentSavedTx); window.print(); }, 500); return;
-            } catch(e) { if (e.name === 'NotFoundError') { showToast("Pemilihan printer dibatalkan.", "warning"); } else { showToast("Akses Bluetooth ditolak: " + e.message, "error"); } return; }
-        } else { showToast("Bluetooth Web tidak didukung browser ini. Membuka PDF...", "warning"); setTimeout(function() { document.getElementById('print-area').innerHTML = generateReceiptHTML(currentSavedTx); window.print(); }, 1000); }
+                var btDevice = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2']
+                });
+                showToast("Menghubungkan ke " + btDevice.name + "...");
+                var server = await btDevice.gatt.connect();
+
+                var service = null; var characteristic = null;
+                var serviceUuids = ['000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2'];
+                var charUuids = ['00002af1-0000-1000-8000-00805f9b34fb', 'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f'];
+
+                // Mencari Service Bluetooth Thermal Printer yang umum
+                for (var i=0; i<serviceUuids.length; i++) { try { service = await server.getPrimaryService(serviceUuids[i]); if(service) break; } catch(e) {} }
+                if (!service) throw new Error("Service Bluetooth tidak cocok");
+
+                for (var j=0; j<charUuids.length; j++) { try { characteristic = await service.getCharacteristic(charUuids[j]); if(characteristic) break; } catch(e) {} }
+                if (!characteristic) throw new Error("Karakteristik Bluetooth tidak cocok");
+
+                // Mengubah Teks Nota menjadi Bahasa Mesin (ESC/POS Bytes)
+                var str = generateRawTextReceipt(currentSavedTx);
+                var encoder = new TextEncoder();
+                var bytes = encoder.encode(str);
+
+                // Mengirim Perintah Reset & Rata Kiri
+                await characteristic.writeValue(new Uint8Array([0x1B, 0x40])); 
+                await characteristic.writeValue(new Uint8Array([0x1B, 0x61, 0x00])); 
+
+                // Mengirim Data Teks per 20 Byte (Mencegah Memori Printer Penuh)
+                var chunkSize = 20; 
+                for (var k = 0; k < bytes.length; k += chunkSize) {
+                    await characteristic.writeValue(bytes.slice(k, k + chunkSize));
+                }
+
+                showToast("Nota berhasil dicetak langsung ke Mesin!");
+                setTimeout(function() { btDevice.gatt.disconnect(); }, 2000);
+                return; // Sukses Cetak Langsung, Hentikan Fungsi.
+
+            } catch(e) {
+                console.error("Web Bluetooth Error:", e);
+                if (e.name !== 'NotFoundError') {
+                    showToast("Cetak langsung ditolak printer. Membuka opsi sistem PDF...", "warning");
+                } else {
+                    return; // Jika User menekan tombol "Batal" di layar Bluetooth, hentikan semuanya.
+                }
+            }
+        }
+
+        // 2. JIKA PRINTER TIDAK MENDUKUNG WEB BLUETOOTH LANGSUNG (FALLBACK)
+        // Membuka UI Print Sistem Android.
+        setTimeout(function() { 
+            document.getElementById('print-area').innerHTML = generateReceiptHTML(currentSavedTx); 
+            window.print(); 
+            
+            // Memberikan petunjuk pintar ke kasir
+            setTimeout(function() {
+                zettConfirm("Informasi Mode Cetak", "Jika di layar Anda malah muncul 'Simpan sebagai PDF', tekan tulisan tersebut lalu pilih 'Semua Printer' dan pilih nama Printer Thermal Anda. \n\n(Catatan: Jika nama printernya tidak ada, Anda wajib menginstal aplikasi 'RawBT' di PlayStore agar Android Anda mengenali printer kasir).", "info", function(){});
+            }, 1000);
+        }, 500); 
     }
 
     function actionSendWA() {
@@ -829,3 +932,4 @@
             pageTitleEl.innerText = titleText;
         }
     }
+</script>
