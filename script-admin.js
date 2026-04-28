@@ -1,4 +1,3 @@
-<script>
     /**
      * ZETTBOT - SCRIPT ADMIN
      * Berisi Logika Dashboard, Generator View Dinamis, dan Operasi CRUD Master Data
@@ -336,4 +335,3 @@
             var elRole = document.getElementById('select-Users-Role'); if(elRole) { if(tsInstances['select-Users-Role']) { tsInstances['select-Users-Role'].destroy(); } tsInstances['select-Users-Role'] = new TomSelect(elRole, { create: false, selectOnTab: true, openOnFocus: false, shouldLoad: function(query) { return query.length > 0; }, onKeyDown: commonOnKeyDown }); }
         } catch(e) {}
     }
-</script>
