@@ -18,6 +18,10 @@ if (typeof google === 'undefined') {
                     saveRecord: function(sheet, data) { this._doFetch('saveRecord', {sheetName: sheet, data: data}); return this; },
                     updateRecord: function(sheet, id, data) { this._doFetch('updateRecord', {sheetName: sheet, id: id, data: data}); return this; },
                     deleteRecord: function(sheet, id) { this._doFetch('deleteRecord', {sheetName: sheet, id: id}); return this; },
+                    // ZETTBOT FIX: Mendaftarkan fungsi spesifik POS/Kasir ke jembatan Vercel
+                    saveTransAksiStaff: function(payload) { this._doFetch('saveTransAksiStaff', payload); return this; },
+                    updateTransAksiStaffStatus: function(id, status, pmbStatus, sisaBayar) { this._doFetch('updateTransAksiStaffStatus', {id: id, status: status, pmbStatus: pmbStatus, sisaBayar: sisaBayar}); return this; },
+                    
                     _doFetch: function(action, payload) {
                         var onSuccess = this._onSuccess;
                         var onFailure = this._onFailure;
