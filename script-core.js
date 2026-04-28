@@ -7,7 +7,7 @@ if (typeof google === 'undefined') {
     console.log("🌐 Berjalan di Vercel/Eksternal - ZettBridge Aktif!");
     window.google = {
         script: {
-            // ZETTBOT PRO FIX: Menggunakan getter agar setiap pemanggilan adalah sesi baru yang independen (Anti-Tabrakan Callback)
+            // ZETTBOT PRO FIX: Menggunakan getter agar setiap pemanggilan adalah sesi baru yang independen
             get run() {
                 return {
                     _onSuccess: null,
@@ -19,9 +19,25 @@ if (typeof google === 'undefined') {
                     updateRecord: function(sheet, id, data) { this._doFetch('updateRecord', {sheetName: sheet, id: id, data: data}); return this; },
                     deleteRecord: function(sheet, id) { this._doFetch('deleteRecord', {sheetName: sheet, id: id}); return this; },
                     
-                    // ZETTBOT FIX: Sinkronisasi nama fungsi dengan script-pos.js & penangkapan parameter fileData yang akurat
-                    saveTransaksiStaff: function(recordObj, fileData) { this._doFetch('saveTransaksiStaff', {recordObj: recordObj, fileData: fileData}); return this; },
-                    updateStatusProduksi: function(id, status, pmbStatus) { this._doFetch('updateStatusProduksi', {id: id, status: status, pmbStatus: pmbStatus}); return this; },
+                    // ZETTBOT FIX: Multi-Compatibility agar tidak error apapun penulisan di script-pos.js
+                    saveTransAksiStaff: function(p1, p2) {
+                        var payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
+                        this._doFetch('saveTransAksiStaff', payload);
+                        return this;
+                    },
+                    saveTransaksiStaff: function(p1, p2) {
+                        var payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
+                        this._doFetch('saveTransAksiStaff', payload);
+                        return this;
+                    },
+                    updateTransaksiStaffStatus: function(id, status, pmbStatus, sisaBayar) {
+                        this._doFetch('updateStatusProduksi', {id: id, status: status, pmbStatus: pmbStatus, sisaBayar: sisaBayar});
+                        return this;
+                    },
+                    updateStatusProduksi: function(id, status, pmbStatus, sisaBayar) {
+                        this._doFetch('updateStatusProduksi', {id: id, status: status, pmbStatus: pmbStatus, sisaBayar: sisaBayar});
+                        return this;
+                    },
                     
                     _doFetch: function(action, payload) {
                         var onSuccess = this._onSuccess;
@@ -33,7 +49,6 @@ if (typeof google === 'undefined') {
                             return; 
                         }
                         
-                        // ZETTBOT PRO FIX: Safety Timeout & Error Decoupling (Anti-Stuck & Anti-Silent Error)
                         var controller = null;
                         var timeoutId = null;
                         var fetchOptions = { 
@@ -45,7 +60,7 @@ if (typeof google === 'undefined') {
                         if (window.AbortController) {
                             controller = new AbortController();
                             fetchOptions.signal = controller.signal;
-                            timeoutId = setTimeout(function() { controller.abort(); }, 45000); // 45 Detik maksimal loading
+                            timeoutId = setTimeout(function() { controller.abort(); }, 45000); 
                         }
                         
                         fetch(GAS_URL, fetchOptions)
@@ -63,7 +78,6 @@ if (typeof google === 'undefined') {
                                 if(onFailure) setTimeout(function() { onFailure("Respon dari server gagal dibaca. Coba lagi."); }, 0);
                                 return;
                             }
-                            // PENTING: Mengeksekusi callback di luar promise agar jika error UI, tidak tertelan dan membuat STUCK!
                             if(onSuccess) setTimeout(function() { onSuccess(data); }, 0);
                         })
                         .catch(function(err) { 
