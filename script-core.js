@@ -187,6 +187,11 @@ if (typeof google === 'undefined') {
                         let payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
                         let rec = payload.recordObj || payload;
                         
+                        // ZETTBOT FIX: Tampilkan foto base64 secara instan sebelum URL asli dari Drive turun
+                        if (payload.fileData && payload.fileData.base64) {
+                            rec['Foto'] = 'data:' + payload.fileData.mimeType + ';base64,' + payload.fileData.base64;
+                        }
+
                         if (!rec['ID']) {
                             let maxNum = 0;
                             (appData.produksi || []).forEach(r => { 
