@@ -1003,21 +1003,42 @@ async function actionPrintReceipt() {
 }
 
 function actionSendWA() {
-    if(!currentSavedTx) return; var px = currentSavedTx; var hp = px['No Telpon'] || ''; 
-    if(hp.startsWith("'")) { hp = hp.substring(1); } if(hp.startsWith('0')) { hp = '62' + hp.substring(1); }
+    if(!currentSavedTx) return; 
+    var px = currentSavedTx; 
+    var hp = px['No Telpon'] || ''; 
+    if(hp.startsWith("'")) { hp = hp.substring(1); } 
+    if(hp.startsWith('0')) { hp = '62' + hp.substring(1); }
+    
+    var activeStatus = String(px['Status'] || 'Proses').trim().toUpperCase();
+    var activePmb = px['Pembayaran'] || 'Belum Lunas';
+    
+    var txModal = document.getElementById('modal-tx-detail');
+    if (txModal && !txModal.classList.contains('hidden')) {
+        var elStatus = document.getElementById('tx-detail-status');
+        if (elStatus) activeStatus = String(elStatus.value).trim().toUpperCase();
+        var elPmb = document.getElementById('tx-detail-pembayaran');
+        if (elPmb) activePmb = elPmb.value;
+    }
+
     var layananListWA = ''; var estimasiGlobalWA = ''; var items = []; var diskonTx = 0; var potonganMemberTx = 0; var subtotalTx = Number(px['Total Harga'] || 0); var kgTerpakaiTx = parseFloat(px['Kg Terpakai']) || 0;
     var custData = appData.pelanggan.find(function(p) { return p['Nama Pelanggan'] === px['Nama Pelanggan']; }); var currentSisaKuota = custData ? (parseFloat(custData['Sisa Kuota (Kg)']) || 0) : 0; 
     currentSisaKuota = Math.round(currentSisaKuota * 100) / 100;
     if (px['Detail Layanan JSON']) { try { var parsed = JSON.parse(px['Detail Layanan JSON']); if(!Array.isArray(parsed)) { items = parsed.items || []; diskonTx = parsed.diskon || 0; potonganMemberTx = parsed.potonganMember || 0; subtotalTx = parsed.subtotal || subtotalTx; } else { items = parsed; } } catch(e) {} }
-    var totalHarga = Number(px['Total Harga'] || 0); var pmbStatusVal = px['Pembayaran'] || 'Belum Lunas';
+    
+    var totalHarga = Number(px['Total Harga'] || 0); 
+    var pmbStatusVal = activePmb;
+    
     if (totalHarga === 0 && subtotalTx > 0 && diskonTx === 0) { pmbStatusVal = 'Potong Kuota'; }
     else if (totalHarga === 0 && (pmbStatusVal === 'Potong Kuota' || kgTerpakai > 0)) { pmbStatusVal = 'Potong Kuota'; }
+    
     var isPureMember = (totalHarga === 0 && pmbStatusVal === 'Potong Kuota');
     if (pmbStatusVal === 'Potong Kuota' && kgTerpakaiTx === 0 && items.length > 0) { items.forEach(function(i) { if(i.satuan === 'Kg') kgTerpakaiTx += i.qty; }); }
+    
     var trackingSisaKuota = currentSisaKuota + kgTerpakaiTx; var remainingKg = kgTerpakaiTx;
     var allSameDate = true; var firstDate = items.length > 0 ? (items[0].estimasiSelesai ? String(items[0].estimasiSelesai).split(' - ')[0].split(' ')[0] : '') : '';
     for(var i=1; i<items.length; i++){ var currEst = items[i].estimasiSelesai ? String(items[i].estimasiSelesai).split(' - ')[0].split(' ')[0] : ''; if(currEst !== firstDate){ allSameDate = false; break; } }
     if (allSameDate && firstDate) { estimasiGlobalWA = '\nSelesai : ' + firstDate; }
+    
     if (items.length > 0) {
         var arrWA = [];
         items.forEach(function(item) {
@@ -1030,7 +1051,9 @@ function actionSendWA() {
         });
         layananListWA = arrWA.join('\n\n'); 
     } else { layananListWA = (px['Layanan'] || '').split('+').map(function(l) { return l.trim(); }).join('\n'); }
-    var dpAmount = Number(px['DP'] || 0); var sisaAmount = Number(px['Sisa Bayar'] !== undefined ? px['Sisa Bayar'] : totalHarga); 
+    
+    var dpAmount = Number(px['DP'] || 0); 
+    var sisaAmount = Number(px['Sisa Bayar'] !== undefined ? px['Sisa Bayar'] : totalHarga); 
     if (pmbStatusVal === 'Lunas' || pmbStatusVal === 'Potong Kuota') { sisaAmount = 0; }
     
     var arrPaymentWA = [];
@@ -1054,11 +1077,10 @@ function actionSendWA() {
         }
     }
     var paymentWA = arrPaymentWA.join('\n');
-    
     var kasirName = (currentUser && currentUser['Nama Lengkap']) ? currentUser['Nama Lengkap'] : 'Admin';
-    
     var text = '';
-    if (px['Status'] === 'Selesai') {
+    
+    if (activeStatus === 'SELESAI') {
         text = '===================================\n' +
                'Hai Kak ' + (px['Nama Pelanggan'] || '-') + ' laundry anda sudah selesai, siap untuk diambil\n' +
                'silahkan datang kelaundry kami. Terimakasi\n\n' +
@@ -1068,7 +1090,8 @@ function actionSendWA() {
                'Sisa tagihan : Rp. ' + sisaAmount.toLocaleString('id-ID') + '\n' +
                '===================================';
     } else {
-        text = appSettings.nama + '\n' + appSettings.alamat + '\n====================\nTanggal : ' + (px['Waktu Masuk'] ? String(px['Waktu Masuk']).split(' ')[0] : '-') + estimasiGlobalWA + '\nNo Nota : ' + (px['No Nota'] || '-') + '\nKasir : ' + kasirName + '\nNama : ' + (px['Nama Pelanggan'] || '-') + '\n====================\n' + layananListWA + '\n====================\n' + paymentWA + '\n====================\nStatus : ' + (px['Status'] || 'Proses') + '\nDilunasi : -\nDiambil : -\n====================\n1. Pakaian luntur bukan tanggung jawab laundry\n2. Minimum perhitungan laundry kiloan (1 Kg)\n3. Tidak menerima laundry dalaman\n4. Cucian tidak diambil 1 bulan bukan tanggung jawab kami.';
+        var cleanStatusName = activeStatus.charAt(0).toUpperCase() + activeStatus.slice(1).toLowerCase();
+        text = appSettings.nama + '\n' + appSettings.alamat + '\n====================\nTanggal : ' + (px['Waktu Masuk'] ? String(px['Waktu Masuk']).split(' ')[0] : '-') + estimasiGlobalWA + '\nNo Nota : ' + (px['No Nota'] || '-') + '\nKasir : ' + kasirName + '\nNama : ' + (px['Nama Pelanggan'] || '-') + '\n====================\n' + layananListWA + '\n====================\n' + paymentWA + '\n====================\nStatus : ' + cleanStatusName + '\nDilunasi : -\nDiambil : -\n====================\n1. Pakaian luntur bukan tanggung jawab laundry\n2. Minimum perhitungan laundry kiloan (1 Kg)\n3. Tidak menerima laundry dalaman\n4. Cucian tidak diambil 1 bulan bukan tanggung jawab kami.';
     }
 
     window.open('https://wa.me/' + hp + '?text=' + encodeURIComponent(text), '_blank');
