@@ -11,7 +11,36 @@ function resolveLayananNameForProduksi(idOrName) {
     return idOrName;
 }
 
-// ZETTBOT PRO: Update renderStaffTable dengan Pagination Client-Side & Filter Tanggal
+window.toggleDateFilter = function(isActive) {
+    var wrapper = document.getElementById('staff-filter-date-wrapper');
+    var input = document.getElementById('staff-filter-date');
+    var btn = document.getElementById('staff-filter-date-btn');
+    var text = document.getElementById('staff-filter-date-text');
+    
+    if (isActive) {
+        if (wrapper) wrapper.classList.remove('opacity-40', 'grayscale', 'pointer-events-none');
+        if (input) input.disabled = false;
+        if (btn) { btn.classList.add('bg-teal-50', 'text-teal-600', 'border-teal-200'); btn.classList.remove('bg-slate-50', 'text-slate-500', 'border-transparent'); }
+        if (text) { text.classList.add('text-teal-700'); text.classList.remove('text-slate-600'); }
+        
+        if (input && !input.value) {
+            var d = new Date();
+            var month = '' + (d.getMonth() + 1);
+            var day = '' + d.getDate();
+            var year = d.getFullYear();
+            if (month.length < 2) month = '0' + month;
+            if (day.length < 2) day = '0' + day;
+            input.value = [year, month, day].join('-');
+        }
+    } else {
+        if (wrapper) wrapper.classList.add('opacity-40', 'grayscale', 'pointer-events-none');
+        if (input) input.disabled = true;
+        if (btn) { btn.classList.remove('bg-teal-50', 'text-teal-600', 'border-teal-200'); btn.classList.add('bg-slate-50', 'text-slate-500', 'border-transparent'); }
+        if (text) { text.classList.remove('text-teal-700'); text.classList.add('text-slate-600'); }
+    }
+    renderStaffTable(false);
+};
+
 function renderStaffTable(keepPage) {
     if (!keepPage) { pageConfig['Staff'].page = 1; }
 
@@ -22,28 +51,23 @@ function renderStaffTable(keepPage) {
     var searchInput = document.getElementById('staff-search'); var searchVal = searchInput ? (searchInput.value || '').toLowerCase() : '';
     var filterInput = document.getElementById('staff-filter-status'); var statusFilter = filterInput ? filterInput.value : '';
     
-    // ZETTBOT FIX: Logika Filter Tanggal & UI Badge Kalender
+    var dateToggle = document.getElementById('staff-filter-date-toggle');
+    var isDateFilterActive = dateToggle ? dateToggle.checked : false;
+    
     var dateFilterInput = document.getElementById('staff-filter-date');
     var dateFilterVal = dateFilterInput ? dateFilterInput.value : '';
     var formattedDateFilter = '';
     var parts = [];
-    
-    var dateBadge = document.getElementById('staff-filter-date-badge');
     var dateText = document.getElementById('staff-filter-date-text');
-    var clearDateBtn = document.getElementById('btn-clear-date');
     
     if (dateFilterVal) {
-        parts = dateFilterVal.split('-'); // format baku: YYYY-MM-DD
+        parts = dateFilterVal.split('-');
         if (parts.length === 3) {
-            formattedDateFilter = parts[2] + '/' + parts[1] + '/' + parts[0]; // Jadikan DD/MM/YYYY
-            if (dateText) dateText.innerText = parts[2]; // Munculkan angka tanggal di ikon
+            formattedDateFilter = parts[2] + '/' + parts[1] + '/' + parts[0]; 
+            if (dateText) dateText.innerText = parts[2]; 
         }
-        if (dateBadge) dateBadge.classList.remove('hidden');
-        if (clearDateBtn) { clearDateBtn.classList.remove('hidden'); clearDateBtn.classList.add('block'); }
     } else {
         if (dateText) dateText.innerText = '';
-        if (dateBadge) dateBadge.classList.add('hidden');
-        if (clearDateBtn) { clearDateBtn.classList.add('hidden'); clearDateBtn.classList.remove('block'); }
     }
 
     var prodCopy = []; for (var m = 0; m < data.length; m++) { prodCopy.push(data[m]); }
@@ -54,9 +78,8 @@ function renderStaffTable(keepPage) {
         var matchSearch = !searchVal || combined.includes(searchVal); 
         var matchStatus = !statusFilter || row['Status'] === statusFilter; 
         
-        // ZETTBOT FIX: Pencocokan data dengan Tanggal (Sangat Ketat/Aman)
         var matchDate = true;
-        if (formattedDateFilter) {
+        if (isDateFilterActive && formattedDateFilter) {
             var rowDateRaw = row['Waktu Masuk'] ? String(row['Waktu Masuk']).split(' ')[0] : '';
             var rParts = rowDateRaw.split('/');
             if (rParts.length === 3) {
@@ -77,7 +100,6 @@ function renderStaffTable(keepPage) {
         return matchSearch && matchStatus && matchDate;
     });
 
-    // --- ZETTBOT PRO: CLIENT-SIDE PAGINATION ENGINE ---
     var totalItems = displayData.length;
     var limit = pageConfig['Staff'].limit;
     var totalPages = Math.ceil(totalItems / limit);
@@ -114,7 +136,6 @@ function renderStaffTable(keepPage) {
         } catch(e) {}
 
         var sBg = ''; if (row['Status'] === 'Proses') sBg = 'bg-purple-100 text-purple-700'; else if (row['Status'] === 'Selesai') sBg = 'bg-emerald-100 text-emerald-700'; else sBg = 'bg-blue-100 text-blue-700';
-        
         var pmbStatusVal = row['Pembayaran'] || 'Belum Lunas';
         var totalHarga = Number(row['Total Harga'] || 0);
         var kgTerpakai = parseFloat(row['Kg Terpakai']) || 0;
@@ -236,7 +257,7 @@ function initCustomerAutocomplete() {
                             var mainText = escape(isNama ? item.nama : item.hp); 
                             var subText = escape(isNama ? item.hp : item.nama); 
                             var icon = isNama ? 'phone' : 'user';
-                            return '<div class="py-2 px-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50"><span class="font-bold block text-slate-800 text-[13px] mb-0.5 pointer-events-none">' + mainText + '</span><span class="text-[11px] font-mono text-slate-50 pointer-events-none"><i class="ph-fill ph-' + icon + ' text-teal-500 mr-1 pointer-events-none"></i> ' + subText + '</span></div>'; 
+                            return '<div class="py-2 px-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50"><span class="font-bold block text-slate-800 text-[13px] mb-0.5 pointer-events-none">' + mainText + '</span><span class="text-[11px] font-mono text-slate-500 pointer-events-none"><i class="ph-fill ph-' + icon + ' text-teal-500 mr-1 pointer-events-none"></i> ' + subText + '</span></div>'; 
                         } 
                     },
                     option_create: function(data, escape) { 
@@ -275,7 +296,7 @@ function initCustomerAutocomplete() {
                             var infoEl = document.getElementById('staff-member-info'); 
                             var pmbInput = document.getElementById('staff-input-pembayaran');
                             
-                            if (realCust && realCust['Status'] === 'Member') {
+                            if (realCust && realCust && realCust['Status'] === 'Member') {
                                 togglePotongKuotaOption(true, false);
                                 
                                 var sisaKuota = parseFloat(realCust['Sisa Kuota (Kg)'] || 0); var paketName = '-';
@@ -582,7 +603,6 @@ function execSaveStaff(recordObj, fileData, btn) {
         .saveTransaksiStaff(recordObj, fileData);
 }
 
-// VIEW & EDIT TRANSACTIONS
 function openTxDetail(id) {
     var px = appData.produksi.find(function(x) { return String(x['ID']) === String(id); }); if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
     currentDetailId = id; var cust = resolvePelanggan(px['ID Pelanggan']); currentSavedTx = {...px, 'Nama Pelanggan': cust.nama, 'No Telpon': cust.hp};
@@ -697,7 +717,6 @@ function viewProduksiDetail(id) {
     var modal = document.getElementById('modal-view-produksi'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
 }
 
-// ZETTBOT PRO: GENERATOR RECEIPT HTML (Untuk Fallback PDF/RawBT)
 function generateReceiptHTML(px) {
     var layananHTML = ''; var estimasiGlobalHTML = ''; var items = []; var diskonTx = 0; var potonganMemberTx = 0; var subtotalTx = Number(px['Total Harga'] || 0); var kgTerpakaiTx = parseFloat(px['Kg Terpakai']) || 0;
     var custData = appData.pelanggan.find(function(p) { return p['Nama Pelanggan'] === px['Nama Pelanggan']; }); var currentSisaKuota = custData ? (parseFloat(custData['Sisa Kuota (Kg)']) || 0) : 0; 
@@ -722,8 +741,6 @@ function generateReceiptHTML(px) {
             if (pmbStatusVal === 'Potong Kuota' && item.satuan === 'Kg' && remainingKg > 0) { isCoveredByQuota = true; kgDeducted = Math.min(item.qty, remainingKg); remainingKg -= kgDeducted; }
             var itemEst = item.estimasiSelesai ? String(item.estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
             var estHtml = (!allSameDate && itemEst) ? ('<br><span style="color:black;">Selesai: ' + itemEst + '</span>') : '';
-            
-            // ZETTBOT FIX: Jarak PADDING antara baris layanan
             var mb = (index < items.length - 1) ? '12px' : '6px';
             
             if (isCoveredByQuota) { arrHtml.push('<div style="margin-bottom:' + mb + ';"><div style="display:flex; justify-content:space-between; font-weight:bold; color:black;"><span>' + item.nama + '</span><span>-</span></div><div style="font-size:10px; color:black;">' + (Math.round(trackingSisaKuota*100)/100) + ' Kg - ' + item.qty + ' Kg = ' + (Math.round((trackingSisaKuota - item.qty)*100)/100) + ' Kg' + estHtml + '</div></div>'); trackingSisaKuota -= item.qty; } 
@@ -756,49 +773,29 @@ function generateReceiptHTML(px) {
     paymentHTML += '</table>';
     
     var kasirName = (currentUser && currentUser['Nama Lengkap']) ? currentUser['Nama Lengkap'] : 'Admin';
-    var tglMasuk = (px['Waktu Masuk'] ? String(px['Waktu Masuk']).split(' ')[0] : '-'); // Tgl Masuk TANPA JAM
+    var tglMasuk = (px['Waktu Masuk'] ? String(px['Waktu Masuk']).split(' ')[0] : '-'); 
     var nameCust = px['Nama Pelanggan'] || '-';
-    
-    // ZETTBOT FIX: Fleksibel Font. Jika hurufnya sangat banyak, kecilkan jadi 16px agar muat 1 baris.
     var nameFontSize = nameCust.length > 15 ? '16px' : '22px'; 
 
     var finalHtml = '<div style="font-family: monospace; color: black; font-size: 11px; width: 100%;">';
-
-    // 1. Header (Tanpa Logo)
     finalHtml += '<div style="text-align: center; margin-bottom: 6px;">';
     finalHtml += '<h2 style="margin:0 0 4px 0; font-size:16px; font-weight:900; letter-spacing:1px; color:black;">' + (appSettings.nama.toUpperCase()) + '</h2>';
     finalHtml += '<p style="margin:0; font-size:10px; color:black; line-height:1.3;">' + (appSettings.alamat) + '</p>';
     finalHtml += '</div>';
-
-    // 2. Garis Dobel putus
     finalHtml += '<div style="border-top: 1px dashed black; border-bottom: 1px dashed black; height: 2px; margin: 6px 0;"></div>';
-
-    // 3. Meta Informasi
     finalHtml += '<table width="100%" style="font-size:11px; color:black; margin-bottom:6px; font-weight:bold;">';
     finalHtml += '<tr><td width="25%">Tgl</td><td width="5%">:</td><td>' + tglMasuk + '</td></tr>';
     finalHtml += '<tr><td>Kasir</td><td>:</td><td>' + kasirName + '</td></tr>';
     finalHtml += '<tr><td>No. Nota</td><td>:</td><td>' + (px['No Nota'] || '-') + '</td></tr>';
     finalHtml += '</table>';
-
-    // 4. Nama Pelanggan (Fleksibel & Lebih Besar)
-    // ZETTBOT FIX: PADDING EXTRA DI ATAS NAMA PELANGGAN (margin-top diperbesar menjadi 18px)
     finalHtml += '<div style="text-align: center; margin: 18px 0 8px 0;">';
     finalHtml += '<h1 style="margin:0; font-size:' + nameFontSize + '; font-weight:900; color:black; line-height:1.1; word-wrap:break-word;">' + nameCust + '</h1>';
     finalHtml += '</div>';
-
-    // 5. Garis Putus Tunggal
     finalHtml += '<div style="border-bottom: 1px dashed black; margin: 6px 0;"></div>';
-
-    // 6. Daftar Layanan
     finalHtml += estimasiGlobalHTML;
     finalHtml += '<div style="font-size:11px; line-height:1.6; color:black;">' + layananHTML + '</div>';
-    
-    // 7. Pembayaran
     finalHtml += paymentHTML;
-    
     finalHtml += '<div style="border-bottom: 1px dashed black; margin: 12px 0;"></div>';
-    
-    // 8. Syarat dan Ketentuan (Footer)
     finalHtml += '<div style="text-align: left; margin-top: 10px; font-size: 10px; color: black; line-height: 1.5;">';
     finalHtml += '<p style="margin:0; text-align: center; font-weight: bold; padding-bottom: 6px; font-size:12px;">Terima Kasih</p>';
     finalHtml += '<ol style="margin:0; padding-left:14px;">';
@@ -807,19 +804,12 @@ function generateReceiptHTML(px) {
     finalHtml += '<li style="padding-bottom:2px;">Tidak menerima laundry dalaman.</li>';
     finalHtml += '<li style="padding-bottom:2px;">Cucian tidak diambil 1 bulan bukan tanggung jawab kami.</li>';
     finalHtml += '</ol>';
-    finalHtml += '</div>';
-    
-    // 9. PADDING BAWAH AGAR KERTAS BISA TERPOTONG SEMPURNA & S&K TERCETAK
     finalHtml += '<div style="height: 60px;"></div>';
-    
     finalHtml += '</div>';
 
     return finalHtml;
 }
 
-function showSuccessModal() { var modal = document.getElementById('modal-success-print'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); } }
-
-// ZETTBOT PRO: GENERATOR RAW TEXT ESC/POS UNTUK CETAK BLUETOOTH LANGSUNG
 function generateRawTextReceipt(px) {
     var str = "";
     var ESC = "\x1B"; var GS = "\x1D";
@@ -830,12 +820,9 @@ function generateRawTextReceipt(px) {
 
     str += init;
     str += center;
-    // Laundry Name
     str += sizeDoubleHeight + appSettings.nama.toUpperCase() + "\n";
     str += sizeNormal;
-    // Address
     str += (appSettings.alamat||'') + "\n";
-
     str += left;
     str += "================================\n";
 
@@ -844,15 +831,11 @@ function generateRawTextReceipt(px) {
     str += "Tgl      : " + tglMasuk + "\n";
     str += "Kasir    : " + kasirName + "\n";
     str += "No. Nota : " + (px['No Nota'] || '-') + "\n";
-    
-    // ZETTBOT FIX: PADDING EXTRA DI ATAS NAMA PELANGGAN (Menambah baris kosong \n)
     str += "\n";
-    
     str += center;
     var nameCust = (px['Nama Pelanggan'] || '-');
     if (nameCust.length > 15) { str += sizeDoubleHeight + nameCust + "\n"; } else { str += sizeDouble + nameCust + "\n"; }
     str += sizeNormal;
-
     str += left;
     str += "--------------------------------\n";
 
@@ -865,17 +848,12 @@ function generateRawTextReceipt(px) {
             var line2 = item.qty + " " + item.satuan + " x " + Number(item.subtotal/item.qty).toLocaleString('id-ID');
             var val2 = "Rp " + Number(item.subtotal).toLocaleString('id-ID');
             str += splitKV(line2, val2);
-            
-            // ZETTBOT FIX: PADDING ANTAR LAYANAN
             if (index < items.length - 1) { str += "\n"; }
         });
-    } else { str += (px['Layanan'] || '').replace(/\+/g, '\n\n') + "\n"; } // Jarak extra untuk format non-json
+    } else { str += (px['Layanan'] || '').replace(/\+/g, '\n\n') + "\n"; } 
 
     str += "--------------------------------\n";
-
     var totalHarga = Number(px['Total Harga'] || 0);
-    
-    // ZETTBOT FIX: POSISI DISKON DITUKAR KE ATAS TOTAL BAYAR
     if(diskonTx > 0) str += splitKV("DISKON", "-Rp " + diskonTx.toLocaleString('id-ID'));
     str += splitKV("TOTAL", "Rp " + totalHarga.toLocaleString('id-ID'));
 
@@ -896,16 +874,14 @@ function generateRawTextReceipt(px) {
     str += "2. Minimum laundry kiloan (1Kg).\n";
     str += "3. Tdk menerima lndry dalaman.\n";
     str += "4. Cucian tdk diambil 1 bln \n   bukan tanggung jawab kami.\n";
-
-    // Footer padding untuk ESC/POS printer
     str += "\n\n\n\n\n";
     return str;
 }
 
-// ZETTBOT PRO FIX: Global Variabel untuk menampung koneksi printer
+function showSuccessModal() { var modal = document.getElementById('modal-success-print'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); } }
+
 window.zettConnectedPrinter = window.zettConnectedPrinter || null;
 
-// ZETTBOT PRO FIX: FUNGSI HUBUNGKAN PRINTER MANUAL
 async function connectPrinterManually() {
     if (navigator.bluetooth) {
         try {
@@ -926,11 +902,10 @@ async function connectPrinterManually() {
             }
         }
     } else {
-        showToast("Browser/Perangkat ini tidak mendukung Web Bluetooth!", "error");
+        showToast("Perangkat ini tidak mendukung Web Bluetooth!", "error");
     }
 }
 
-// ZETTBOT PRO FIX: MENGUBAH TAMPILAN TOMBOL PRINTER (NEON)
 function updatePrinterStatusUI() {
     var btn = document.getElementById('btn-printer-status');
     if (!btn) return;
@@ -945,7 +920,6 @@ function updatePrinterStatusUI() {
     }
 }
 
-// ZETTBOT PRO FIX: FUNGSI CETAK BLUETOOTH LANGSUNG ANTI-PDF (DENGAN CACHE KONEKSI & ERROR HANDLING)
 async function actionPrintReceipt() {
     if(!currentSavedTx) return;
 
@@ -1018,7 +992,6 @@ async function actionPrintReceipt() {
         }
     }
 
-    // 2. JIKA PRINTER TIDAK MENDUKUNG WEB BLUETOOTH LANGSUNG (FALLBACK HTML RawBT)
     setTimeout(function() { 
         document.getElementById('print-area').innerHTML = generateReceiptHTML(currentSavedTx); 
         window.print(); 
@@ -1143,9 +1116,6 @@ function switchView(viewId) {
     }
 }
 
-// ============================================================================
-// ZETTBOT PRO: FITUR PULL-TO-REFRESH (SWIPE BAWAH) UNTUK LIST TRANSAKSI
-// ============================================================================
 var swipeStartY = 0;
 var swipeCurrentY = 0;
 var isSwipingDown = false;
@@ -1186,9 +1156,6 @@ document.addEventListener('touchend', function(e) {
     swipeCurrentY = 0;
 }, {passive: true});
 
-// ============================================================================
-// ZETTBOT PRO: GLOBAL AUTO-UPPERCASE UNTUK SEMUA INPUT TEXT (KECUALI USERS & LOGIN)
-// ============================================================================
 document.addEventListener('input', function(e) {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
         var type = e.target.type ? e.target.type.toLowerCase() : '';
