@@ -23,13 +23,22 @@ const database = (typeof firebase !== 'undefined') ? firebase.database() : null;
 // 🔥 FIREBASE KEY SANITIZER FIX (Mengatasi error invalid key 'Harga/Kg' dan 'Harga/Pcs')
 function sanitizeFbKeys(data) {
     if (!data) return data;
-    // Mengubah garis miring menjadi garis bawah sebelum masuk Firebase
     return JSON.parse(JSON.stringify(data).replace(/"Harga\/Kg":/g, '"Harga_Kg":').replace(/"Harga\/Pcs":/g, '"Harga_Pcs":'));
 }
 function restoreFbKeys(data) {
     if (!data) return data;
-    // Mengembalikan garis bawah menjadi garis miring saat keluar dari Firebase
     return JSON.parse(JSON.stringify(data).replace(/"Harga_Kg":/g, '"Harga/Kg":').replace(/"Harga_Pcs":/g, '"Harga/Pcs":'));
+}
+
+// ZETTBOT FIX: Membersihkan tanda kutip satu (') pada nomor telpon hasil tarikan GAS
+function cleanPhoneQuotes(arr) {
+    if(!arr) return arr;
+    return arr.map(function(p) {
+        if (p['No Telpon'] && String(p['No Telpon']).startsWith("'")) {
+            p['No Telpon'] = String(p['No Telpon']).substring(1);
+        }
+        return p;
+    });
 }
 
 if (typeof google === 'undefined') {
@@ -48,7 +57,6 @@ if (typeof google === 'undefined') {
                             database.ref('appData').once('value').then(snapshot => {
                                 if (snapshot.exists() && snapshot.val().produksi) {
                                     console.log("⚡ Memuat dari Firebase Instan");
-                                    // Me-restore kembali keys saat ditarik dari Firebase
                                     appData = restoreFbKeys(snapshot.val());
                                     if(this._onSuccess) this._onSuccess(appData);
                                     this._backgroundSyncGasToFirebase();
@@ -64,13 +72,11 @@ if (typeof google === 'undefined') {
                     },
 
                     _fetchFromGas: function() {
-                        // ZETTBOT FIX: MENGGUNAKAN METODE GET UNTUK MENGHINDARI BLOKIR CORB BROWSER!
                         fetch(GAS_URL + "?action=getInitialData", { method: 'GET' })
                         .then(res => res.json())
                         .then(data => {
                             if(data && data.produksi) { 
                                 appData = data; 
-                                // Membersihkan keys sebelum disimpan ke Firebase
                                 if(database) database.ref('appData').set(sanitizeFbKeys(data)); 
                                 console.log("✅ Migrasi Data ke Firebase Berhasil!"); 
                             }
@@ -100,16 +106,26 @@ if (typeof google === 'undefined') {
                         let key = sheet.toLowerCase().replace('layanan', '');
                         if (!appData[key]) appData[key] = [];
                         let prefix = sheet.substring(0, 3).toUpperCase();
+                        
+                        // Buat ID sementara untuk respon layar instan
                         data['ID'] = prefix + '-TMP-' + Math.floor(Math.random() * 1000);
                         appData[key].push(data);
+                        
                         if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
                         if (this._onSuccess) this._onSuccess({ success: true, message: "Data Tersimpan (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
                         
+                        // ZETTBOT FIX: Background fetch ke Google Sheets
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
                         .then(res => res.json()).then(resData => {
                             if (resData.success && resData.data) {
-                                appData[key] = resData.data; if(resData.pelanggan) appData.pelanggan = resData.pelanggan;
+                                // Ganti data sementara dengan data resmi (ID Permanen)
+                                appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
+                                if(resData.pelanggan) appData.pelanggan = cleanPhoneQuotes(resData.pelanggan);
                                 if(database) database.ref('appData').set(sanitizeFbKeys(appData));
+                                
+                                // REFRESH LAYAR DIAM-DIAM: Menyulap ID TMP di layar menjadi ID Permanen tanpa perlu reload web
+                                if(typeof window.renderTable === 'function') window.renderTable(sheet, true);
+                                if(typeof window.updateAllDropdowns === 'function') window.updateAllDropdowns();
                             }
                         }).catch(e => {});
                         return this;
@@ -123,9 +139,17 @@ if (typeof google === 'undefined') {
                             if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
                         }
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Data Diupdate (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
+                        
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateRecord', payload: {sheetName: sheet, id: id, data: data} }) })
                         .then(res => res.json()).then(resData => {
-                            if (resData.success && resData.data) { appData[key] = resData.data; if(resData.pelanggan) appData.pelanggan = resData.pelanggan; if(database) database.ref('appData').set(sanitizeFbKeys(appData)); }
+                            if (resData.success && resData.data) { 
+                                appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
+                                if(resData.pelanggan) appData.pelanggan = cleanPhoneQuotes(resData.pelanggan); 
+                                if(database) database.ref('appData').set(sanitizeFbKeys(appData)); 
+                                
+                                if(typeof window.renderTable === 'function') window.renderTable(sheet, true);
+                                if(typeof window.updateAllDropdowns === 'function') window.updateAllDropdowns();
+                            }
                         }).catch(e => {});
                         return this;
                     },
@@ -137,9 +161,17 @@ if (typeof google === 'undefined') {
                             if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
                         }
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Terhapus (Instan)!", data: appData[key] });
+                        
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'deleteRecord', payload: {sheetName: sheet, id: id} }) })
                         .then(res => res.json()).then(resData => {
-                            if (resData.success && resData.data) { appData[key] = resData.data; if(resData.pelanggan) appData.pelanggan = resData.pelanggan; if(database) database.ref('appData').set(sanitizeFbKeys(appData)); }
+                            if (resData.success && resData.data) { 
+                                appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
+                                if(resData.pelanggan) appData.pelanggan = cleanPhoneQuotes(resData.pelanggan); 
+                                if(database) database.ref('appData').set(sanitizeFbKeys(appData)); 
+                                
+                                if(typeof window.renderTable === 'function') window.renderTable(sheet, true);
+                                if(typeof window.updateAllDropdowns === 'function') window.updateAllDropdowns();
+                            }
                         }).catch(e => {});
                         return this;
                     },
@@ -165,8 +197,12 @@ if (typeof google === 'undefined') {
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload }) })
                         .then(res => res.json()).then(resData => {
                             if (resData.success) {
-                                if (resData.data) appData.produksi = resData.data; if (resData.pelanggan) appData.pelanggan = resData.pelanggan;
+                                if (resData.data) appData.produksi = resData.data; 
+                                if (resData.pelanggan) appData.pelanggan = cleanPhoneQuotes(resData.pelanggan);
                                 if(database) database.ref('appData').set(sanitizeFbKeys(appData));
+                                
+                                if (typeof window.renderStaffTable === 'function') window.renderStaffTable(true);
+                                if (typeof window.renderTable === 'function') window.renderTable('Produksi', true);
                             }
                         }).catch(e => console.error("GAS Sync Error", e));
                         return this;
@@ -180,7 +216,13 @@ if (typeof google === 'undefined') {
                         
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateStatusProduksi', payload: {id: id, status: status, pmbStatus: pmbStatus} }) })
                         .then(res => res.json()).then(resData => {
-                            if (resData.success && resData.data) { appData.produksi = resData.data; if(database) database.ref('appData').set(sanitizeFbKeys(appData)); }
+                            if (resData.success && resData.data) { 
+                                appData.produksi = resData.data; 
+                                if(database) database.ref('appData').set(sanitizeFbKeys(appData)); 
+                                
+                                if (typeof window.renderStaffTable === 'function') window.renderStaffTable(true);
+                                if (typeof window.renderTable === 'function') window.renderTable('Produksi', true);
+                            }
                         }).catch(e => console.error(e));
                         return this;
                     },
