@@ -693,3 +693,4 @@ function toggleSidebar() {
             else { sidebar.classList.add('-translate-x-full'); if(backdrop) { backdrop.classList.add('opacity-0'); setTimeout(function() { backdrop.classList.add('hidden'); }, 300); } }
         } else { sidebar.classList.toggle('hidden'); } 
     } 
+}
