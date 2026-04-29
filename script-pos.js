@@ -1,4 +1,4 @@
-/**
+    /**
      * ZETTBOT - SCRIPT POS & TRANSAKSI
      * Berisi Logika Kasir, Form Transaksi Dinamis, Generator Struk Thermal, dan Cetak Bluetooth/WA
      */
@@ -653,6 +653,7 @@
             .updateStatusProduksi(currentDetailId, newStatus, newPembayaran);
     }
 
+    // ZETTBOT FIX: Memperbolehkan gambar berformat base64 (data:image/...) agar tampil seketika
     function viewProduksiDetail(id) {
         var px = appData.produksi.find(function(x) { return String(x['ID']) === String(id); }); if(!px) { showToast("Data tidak ditemukan", "error"); return; }
         var cust = resolvePelanggan(px['ID Pelanggan']); var layananHTML = ''; 
@@ -683,7 +684,9 @@
 
         var directImgUrl = px['Foto'] ? getDriveDirectUrl(px['Foto']) : ''; var fallbackUrl = 'https://placehold.co/400x400/f8fafc/94a3b8?text=Gagal+Memuat+Foto';
         var fotoHTML = '';
-        if (px['Foto'] && px['Foto'].startsWith('http')) { fotoHTML += '<a href="' + px['Foto'] + '" target="_blank" class="block w-full rounded-2xl overflow-hidden border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative group"><img src="' + directImgUrl + '" class="w-full h-auto object-cover" alt="Foto Transaksi" onerror="this.onerror=null; this.src=\'' + fallbackUrl + '\';"><div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><i class="ph-bold ph-arrows-out text-3xl text-white drop-shadow-md"></i></div></a>'; } 
+        if (px['Foto'] && (String(px['Foto']).startsWith('http') || String(px['Foto']).startsWith('data:'))) { 
+            fotoHTML += '<a href="' + px['Foto'] + '" target="_blank" class="block w-full rounded-2xl overflow-hidden border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative group"><img src="' + directImgUrl + '" class="w-full h-auto object-cover" alt="Foto Transaksi" onerror="this.onerror=null; this.src=\'' + fallbackUrl + '\';"><div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><i class="ph-bold ph-arrows-out text-3xl text-white drop-shadow-md"></i></div></a>'; 
+        } 
         else { fotoHTML += '<div class="w-full py-10 bg-slate-100/50 rounded-2xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400"><i class="ph-duotone ph-image-broken text-4xl mb-2"></i><span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Tidak Ada Foto</span></div>'; }
 
         var html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div class="space-y-4">';
@@ -710,7 +713,7 @@
         }
         html += '</div></div></div>';
         html += '<div class="space-y-4"><div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100"><h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-100 pb-3 flex items-center"><i class="ph-bold ph-t-shirt mr-2"></i> Detail Layanan</h4><div class="mb-2">' + layananHTML + '</div></div><div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100"><h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-100 pb-3 flex items-center justify-between"><span class="flex items-center"><i class="ph-bold ph-camera mr-2"></i> Lampiran Foto</span>';
-        if (px['Foto'] && px['Foto'].startsWith('http')) { html += '<a href="' + px['Foto'] + '" target="_blank" class="text-indigo-500 hover:text-indigo-700 transition-colors capitalize font-bold text-[11px]"><i class="ph-bold ph-arrow-square-out"></i> Buka Penuh</a>'; }
+        if (px['Foto'] && String(px['Foto']).startsWith('http')) { html += '<a href="' + px['Foto'] + '" target="_blank" class="text-indigo-500 hover:text-indigo-700 transition-colors capitalize font-bold text-[11px]"><i class="ph-bold ph-arrow-square-out"></i> Buka Penuh</a>'; }
         html += '</h4>' + fotoHTML + '</div></div></div>';
 
         document.getElementById('view-produksi-content').innerHTML = html;
