@@ -636,21 +636,29 @@ document.addEventListener('DOMContentLoaded', function() {
         modalScrollArea.addEventListener('focus', function(e) {
             var target = e.target;
             if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') {
-                // Jeda 300ms agar animasi keyboard virtual di HP selesai naik
-                setTimeout(function() { 
+                
+                var executeScroll = function() {
+                    // Cari elemen pembungkus (wrapper) terluar yang memiliki label di dalamnya
                     var wrapper = target.closest('.ts-wrapper') ? target.closest('.ts-wrapper').parentElement : (target.closest('[id^="staff-srv-row-"]') || target.closest('.mb-4') || target); 
+                    
                     if (wrapper && modalScrollArea) { 
                         var rect = wrapper.getBoundingClientRect();
                         var scrollRect = modalScrollArea.getBoundingClientRect();
                         var currentScroll = modalScrollArea.scrollTop;
                         
-                        // Tarik layar ke atas tepat 10 pixel dari posisi kolom tersebut
+                        // Kalkulasi akurat: Tarik elemen hingga menyentuh garis atas container (- 10px untuk ruang lega)
                         modalScrollArea.scrollTo({
                             top: currentScroll + (rect.top - scrollRect.top) - 10,
                             behavior: 'smooth'
                         });
                     }
-                }, 300); 
+                };
+
+                // ZETTBOT FIX: Tembak auto-scroll 2 kali. 
+                // HP yang berbeda memiliki delay animasi keyboard yang berbeda. 
+                // Menembak 2x menjamin posisi absolut teratas meskipun layar menyusut perlahan.
+                setTimeout(executeScroll, 250); 
+                setTimeout(executeScroll, 600); 
             }
         }, true);
     }
