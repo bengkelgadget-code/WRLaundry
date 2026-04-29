@@ -20,6 +20,18 @@ if (typeof firebase !== 'undefined' && !firebase.apps.length) {
 }
 const database = (typeof firebase !== 'undefined') ? firebase.database() : null;
 
+// 🔥 FIREBASE KEY SANITIZER FIX (Mengatasi error invalid key 'Harga/Kg' dan 'Harga/Pcs')
+function sanitizeFbKeys(data) {
+    if (!data) return data;
+    // Mengubah garis miring menjadi garis bawah sebelum masuk Firebase
+    return JSON.parse(JSON.stringify(data).replace(/"Harga\/Kg":/g, '"Harga_Kg":').replace(/"Harga\/Pcs":/g, '"Harga_Pcs":'));
+}
+function restoreFbKeys(data) {
+    if (!data) return data;
+    // Mengembalikan garis bawah menjadi garis miring saat keluar dari Firebase
+    return JSON.parse(JSON.stringify(data).replace(/"Harga_Kg":/g, '"Harga/Kg":').replace(/"Harga_Pcs":/g, '"Harga/Pcs":'));
+}
+
 if (typeof google === 'undefined') {
     console.log("🌐 Berjalan di Vercel/Eksternal - ZettBridge Hybrid Aktif!");
     window.google = {
@@ -36,7 +48,8 @@ if (typeof google === 'undefined') {
                             database.ref('appData').once('value').then(snapshot => {
                                 if (snapshot.exists() && snapshot.val().produksi) {
                                     console.log("⚡ Memuat dari Firebase Instan");
-                                    appData = snapshot.val();
+                                    // Me-restore kembali keys saat ditarik dari Firebase
+                                    appData = restoreFbKeys(snapshot.val());
                                     if(this._onSuccess) this._onSuccess(appData);
                                     this._backgroundSyncGasToFirebase();
                                 } else {
@@ -57,7 +70,8 @@ if (typeof google === 'undefined') {
                         .then(data => {
                             if(data && data.produksi) { 
                                 appData = data; 
-                                if(database) database.ref('appData').set(data); 
+                                // Membersihkan keys sebelum disimpan ke Firebase
+                                if(database) database.ref('appData').set(sanitizeFbKeys(data)); 
                                 console.log("✅ Migrasi Data ke Firebase Berhasil!"); 
                             }
                             if(this._onSuccess) this._onSuccess(data);
@@ -73,7 +87,7 @@ if (typeof google === 'undefined') {
                             .then(data => {
                                 if(data && data.produksi) { 
                                     appData = data; 
-                                    if(database) database.ref('appData').set(data); 
+                                    if(database) database.ref('appData').set(sanitizeFbKeys(data)); 
                                 }
                                 if(this._onSuccess) this._onSuccess(data);
                             }).catch(e => {
@@ -88,14 +102,14 @@ if (typeof google === 'undefined') {
                         let prefix = sheet.substring(0, 3).toUpperCase();
                         data['ID'] = prefix + '-TMP-' + Math.floor(Math.random() * 1000);
                         appData[key].push(data);
-                        if(database) database.ref('appData/' + key).set(appData[key]);
+                        if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
                         if (this._onSuccess) this._onSuccess({ success: true, message: "Data Tersimpan (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
                         
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
                         .then(res => res.json()).then(resData => {
                             if (resData.success && resData.data) {
                                 appData[key] = resData.data; if(resData.pelanggan) appData.pelanggan = resData.pelanggan;
-                                if(database) database.ref('appData').set(appData);
+                                if(database) database.ref('appData').set(sanitizeFbKeys(appData));
                             }
                         }).catch(e => {});
                         return this;
@@ -106,12 +120,12 @@ if (typeof google === 'undefined') {
                         if (appData[key]) {
                             let idx = appData[key].findIndex(x => String(x.ID) === String(id));
                             if(idx >= 0) { data.ID = id; appData[key][idx] = Object.assign({}, appData[key][idx], data); }
-                            if(database) database.ref('appData/' + key).set(appData[key]);
+                            if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
                         }
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Data Diupdate (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateRecord', payload: {sheetName: sheet, id: id, data: data} }) })
                         .then(res => res.json()).then(resData => {
-                            if (resData.success && resData.data) { appData[key] = resData.data; if(resData.pelanggan) appData.pelanggan = resData.pelanggan; if(database) database.ref('appData').set(appData); }
+                            if (resData.success && resData.data) { appData[key] = resData.data; if(resData.pelanggan) appData.pelanggan = resData.pelanggan; if(database) database.ref('appData').set(sanitizeFbKeys(appData)); }
                         }).catch(e => {});
                         return this;
                     },
@@ -120,12 +134,12 @@ if (typeof google === 'undefined') {
                         let key = sheet.toLowerCase().replace('layanan', '');
                         if (appData[key]) {
                             appData[key] = appData[key].filter(x => String(x.ID) !== String(id));
-                            if(database) database.ref('appData/' + key).set(appData[key]);
+                            if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
                         }
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Terhapus (Instan)!", data: appData[key] });
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'deleteRecord', payload: {sheetName: sheet, id: id} }) })
                         .then(res => res.json()).then(resData => {
-                            if (resData.success && resData.data) { appData[key] = resData.data; if(resData.pelanggan) appData.pelanggan = resData.pelanggan; if(database) database.ref('appData').set(appData); }
+                            if (resData.success && resData.data) { appData[key] = resData.data; if(resData.pelanggan) appData.pelanggan = resData.pelanggan; if(database) database.ref('appData').set(sanitizeFbKeys(appData)); }
                         }).catch(e => {});
                         return this;
                     },
@@ -145,14 +159,14 @@ if (typeof google === 'undefined') {
                         }
                         let exists = appData.produksi.findIndex(x => x.ID === rec.ID);
                         if (exists >= 0) appData.produksi[exists] = rec; else appData.produksi.push(rec);
-                        if(database) database.ref('appData').set(appData);
+                        if(database) database.ref('appData').set(sanitizeFbKeys(appData));
                         if (this._onSuccess) this._onSuccess({ success: true, message: "Transaksi Tersimpan Cepat!", data: appData.produksi, pelanggan: appData.pelanggan, notaInfo: rec });
                         
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload }) })
                         .then(res => res.json()).then(resData => {
                             if (resData.success) {
                                 if (resData.data) appData.produksi = resData.data; if (resData.pelanggan) appData.pelanggan = resData.pelanggan;
-                                if(database) database.ref('appData').set(appData);
+                                if(database) database.ref('appData').set(sanitizeFbKeys(appData));
                             }
                         }).catch(e => console.error("GAS Sync Error", e));
                         return this;
@@ -161,12 +175,12 @@ if (typeof google === 'undefined') {
                     updateStatusProduksi: function(id, status, pmbStatus) {
                         let target = appData.produksi.find(x => x.ID === id);
                         if (target) { target.Status = status; target.Pembayaran = pmbStatus; if (pmbStatus === 'Lunas') target['Sisa Bayar'] = 0; }
-                        if(database) database.ref('appData/produksi').set(appData.produksi);
+                        if(database) database.ref('appData/produksi').set(sanitizeFbKeys(appData.produksi));
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Status Diperbarui!", data: appData.produksi });
                         
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateStatusProduksi', payload: {id: id, status: status, pmbStatus: pmbStatus} }) })
                         .then(res => res.json()).then(resData => {
-                            if (resData.success && resData.data) { appData.produksi = resData.data; if(database) database.ref('appData').set(appData); }
+                            if (resData.success && resData.data) { appData.produksi = resData.data; if(database) database.ref('appData').set(sanitizeFbKeys(appData)); }
                         }).catch(e => console.error(e));
                         return this;
                     },
@@ -174,7 +188,7 @@ if (typeof google === 'undefined') {
                     _backgroundSyncGasToFirebase: function() {
                         fetch(GAS_URL + "?action=getInitialData", { method: 'GET' })
                         .then(res => res.json())
-                        .then(data => { if(data && data.produksi && database) database.ref('appData').set(data); })
+                        .then(data => { if(data && data.produksi && database) database.ref('appData').set(sanitizeFbKeys(data)); })
                         .catch(e => console.log("Background sync terganggu."));
                     }
                 };
@@ -679,4 +693,3 @@ function toggleSidebar() {
             else { sidebar.classList.add('-translate-x-full'); if(backdrop) { backdrop.classList.add('opacity-0'); setTimeout(function() { backdrop.classList.add('hidden'); }, 300); } }
         } else { sidebar.classList.toggle('hidden'); } 
     } 
-}
