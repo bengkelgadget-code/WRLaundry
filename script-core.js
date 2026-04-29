@@ -1,94 +1,181 @@
-// ZETTBOT BRIDGE: Auto-Switch Backend (GAS / Vercel)
+// ZETTBOT HYBRID ENGINE: Auto-Switch Backend & Firebase RTDB
 // ====================================================================
 // PERHATIAN: Masukkan URL Web App (hasil deploy GAS terbaru) Anda di sini!
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzFDsa85R56Nlgn3QwZ_hl3SNVybUtBY0GjgP1LAF-jN_YfTSyA9Dz2XEK6YB7qDNFqlw/exec"; 
 
+const firebaseConfig = {
+    apiKey: "AIzaSyBbTTYAroluZ3UYMPgnoxLYn1aqPFq9Wik",
+    authDomain: "kasirwaroeng-laundry.firebaseapp.com",
+    projectId: "kasirwaroeng-laundry",
+    storageBucket: "kasirwaroeng-laundry.firebasestorage.app",
+    messagingSenderId: "496085821478",
+    appId: "1:496085821478:web:420e0e871de41ccf409ee7",
+    measurementId: "G-832ZC51E2V",
+    databaseURL: "https://kasirwaroeng-laundry-default-rtdb.asia-southeast1.firebasedatabase.app/" 
+};
+
+// Inisialisasi SDK Firebase
+if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+const database = (typeof firebase !== 'undefined') ? firebase.database() : null;
+
 if (typeof google === 'undefined') {
-    console.log("🌐 Berjalan di Vercel/Eksternal - ZettBridge Aktif!");
+    console.log("🌐 Berjalan di Vercel/Eksternal - ZettBridge Hybrid Aktif!");
     window.google = {
         script: {
-            // ZETTBOT PRO FIX: Menggunakan getter agar setiap pemanggilan adalah sesi baru yang independen
             get run() {
                 return {
                     _onSuccess: null,
                     _onFailure: null,
                     withSuccessHandler: function(cb) { this._onSuccess = cb; return this; },
                     withFailureHandler: function(cb) { this._onFailure = cb; return this; },
-                    getInitialData: function() { this._doFetch('getInitialData', {}); return this; },
-                    saveRecord: function(sheet, data) { this._doFetch('saveRecord', {sheetName: sheet, data: data}); return this; },
-                    updateRecord: function(sheet, id, data) { this._doFetch('updateRecord', {sheetName: sheet, id: id, data: data}); return this; },
-                    deleteRecord: function(sheet, id) { this._doFetch('deleteRecord', {sheetName: sheet, id: id}); return this; },
                     
-                    // ZETTBOT FIX: Menyelaraskan pengiriman nama action ke Google menjadi saveTransaksiStaff
-                    saveTransAksiStaff: function(p1, p2) {
-                        var payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
-                        this._doFetch('saveTransaksiStaff', payload);
-                        return this;
-                    },
-                    saveTransaksiStaff: function(p1, p2) {
-                        var payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
-                        this._doFetch('saveTransaksiStaff', payload);
-                        return this;
-                    },
-                    updateTransaksiStaffStatus: function(id, status, pmbStatus, sisaBayar) {
-                        this._doFetch('updateStatusProduksi', {id: id, status: status, pmbStatus: pmbStatus, sisaBayar: sisaBayar});
-                        return this;
-                    },
-                    updateStatusProduksi: function(id, status, pmbStatus, sisaBayar) {
-                        this._doFetch('updateStatusProduksi', {id: id, status: status, pmbStatus: pmbStatus, sisaBayar: sisaBayar});
-                        return this;
-                    },
-                    
-                    _doFetch: function(action, payload) {
-                        var onSuccess = this._onSuccess;
-                        var onFailure = this._onFailure;
-                        
-                        if(!GAS_URL) { 
-                            console.error("GAS_URL KOSONG!"); 
-                            if(onFailure) setTimeout(function() { onFailure("GAS_URL belum diisi. Hubungi Developer."); }, 0); 
-                            return; 
+                    getInitialData: function() {
+                        if (database) {
+                            database.ref('appData').once('value').then(snapshot => {
+                                if (snapshot.exists() && snapshot.val().produksi) {
+                                    console.log("⚡ Memuat dari Firebase Instan");
+                                    appData = snapshot.val();
+                                    if(this._onSuccess) this._onSuccess(appData);
+                                    this._backgroundSyncGasToFirebase();
+                                } else {
+                                    console.log("⏳ Firebase Kosong, menarik data dari Sheets...");
+                                    this._fetchFromGas();
+                                }
+                            }).catch(e => { this._fetchFromGas(); });
+                        } else {
+                            this._fetchFromGas();
                         }
-                        
-                        var controller = null;
-                        var timeoutId = null;
-                        var fetchOptions = { 
-                            method: 'POST', 
-                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                            body: JSON.stringify({ action: action, payload: payload })
-                        };
+                        return this;
+                    },
 
-                        if (window.AbortController) {
-                            controller = new AbortController();
-                            fetchOptions.signal = controller.signal;
-                            timeoutId = setTimeout(function() { controller.abort(); }, 45000); 
-                        }
-                        
-                        fetch(GAS_URL, fetchOptions)
-                        .then(function(res) { 
-                            if (timeoutId) clearTimeout(timeoutId);
-                            if(!res.ok) throw new Error("Gagal terhubung ke Server (HTTP " + res.status + ")");
-                            return res.text(); 
-                        })
-                        .then(function(text) {
-                            var data;
-                            try {
-                                data = JSON.parse(text);
-                            } catch(e) {
-                                console.error("ZettBridge Parse Error:", text);
-                                if(onFailure) setTimeout(function() { onFailure("Respon dari server gagal dibaca. Coba lagi."); }, 0);
-                                return;
+                    _fetchFromGas: function() {
+                        // ZETTBOT FIX: MENGGUNAKAN METODE GET UNTUK MENGHINDARI BLOKIR CORB BROWSER!
+                        fetch(GAS_URL + "?action=getInitialData", { method: 'GET' })
+                        .then(res => res.json())
+                        .then(data => {
+                            if(data && data.produksi) { 
+                                appData = data; 
+                                if(database) database.ref('appData').set(data); 
+                                console.log("✅ Migrasi Data ke Firebase Berhasil!"); 
                             }
-                            if(onSuccess) setTimeout(function() { onSuccess(data); }, 0);
+                            if(this._onSuccess) this._onSuccess(data);
                         })
-                        .catch(function(err) { 
-                            if (timeoutId) clearTimeout(timeoutId);
-                            console.error("ZettBridge Fetch Error:", err);
-                            if (err.name === 'AbortError') {
-                                if(onFailure) setTimeout(function() { onFailure("Koneksi lambat (Timeout). Silakan coba lagi."); }, 0);
-                            } else {
-                                if(onFailure) setTimeout(function() { onFailure(err.message || "Gagal menghubungi server."); }, 0);
-                            }
+                        .catch(err => { 
+                            console.error("GET Gagal, mencoba POST fallback...", err);
+                            fetch(GAS_URL, { 
+                                method: 'POST', 
+                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                body: JSON.stringify({ action: 'getInitialData', payload: {} }) 
+                            })
+                            .then(res => res.json())
+                            .then(data => {
+                                if(data && data.produksi) { 
+                                    appData = data; 
+                                    if(database) database.ref('appData').set(data); 
+                                }
+                                if(this._onSuccess) this._onSuccess(data);
+                            }).catch(e => {
+                                if(this._onFailure) this._onFailure("Koneksi gagal. Cek Deployment Google Apps Script!");
+                            });
                         });
+                    },
+
+                    saveRecord: function(sheet, data) {
+                        let key = sheet.toLowerCase().replace('layanan', '');
+                        if (!appData[key]) appData[key] = [];
+                        let prefix = sheet.substring(0, 3).toUpperCase();
+                        data['ID'] = prefix + '-TMP-' + Math.floor(Math.random() * 1000);
+                        appData[key].push(data);
+                        if(database) database.ref('appData/' + key).set(appData[key]);
+                        if (this._onSuccess) this._onSuccess({ success: true, message: "Data Tersimpan (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
+                        
+                        fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
+                        .then(res => res.json()).then(resData => {
+                            if (resData.success && resData.data) {
+                                appData[key] = resData.data; if(resData.pelanggan) appData.pelanggan = resData.pelanggan;
+                                if(database) database.ref('appData').set(appData);
+                            }
+                        }).catch(e => {});
+                        return this;
+                    },
+
+                    updateRecord: function(sheet, id, data) {
+                        let key = sheet.toLowerCase().replace('layanan', '');
+                        if (appData[key]) {
+                            let idx = appData[key].findIndex(x => String(x.ID) === String(id));
+                            if(idx >= 0) { data.ID = id; appData[key][idx] = Object.assign({}, appData[key][idx], data); }
+                            if(database) database.ref('appData/' + key).set(appData[key]);
+                        }
+                        if(this._onSuccess) this._onSuccess({ success: true, message: "Data Diupdate (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
+                        fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateRecord', payload: {sheetName: sheet, id: id, data: data} }) })
+                        .then(res => res.json()).then(resData => {
+                            if (resData.success && resData.data) { appData[key] = resData.data; if(resData.pelanggan) appData.pelanggan = resData.pelanggan; if(database) database.ref('appData').set(appData); }
+                        }).catch(e => {});
+                        return this;
+                    },
+
+                    deleteRecord: function(sheet, id) {
+                        let key = sheet.toLowerCase().replace('layanan', '');
+                        if (appData[key]) {
+                            appData[key] = appData[key].filter(x => String(x.ID) !== String(id));
+                            if(database) database.ref('appData/' + key).set(appData[key]);
+                        }
+                        if(this._onSuccess) this._onSuccess({ success: true, message: "Terhapus (Instan)!", data: appData[key] });
+                        fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'deleteRecord', payload: {sheetName: sheet, id: id} }) })
+                        .then(res => res.json()).then(resData => {
+                            if (resData.success && resData.data) { appData[key] = resData.data; if(resData.pelanggan) appData.pelanggan = resData.pelanggan; if(database) database.ref('appData').set(appData); }
+                        }).catch(e => {});
+                        return this;
+                    },
+
+                    saveTransaksiStaff: function(p1, p2) {
+                        let payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
+                        let rec = payload.recordObj || payload;
+                        if (!rec['ID']) {
+                            let maxNum = 0;
+                            (appData.produksi || []).forEach(r => { let id = String(r.ID || ''); if(id.startsWith('TX-')) { let num = parseInt(id.split('-')[1]); if(!isNaN(num) && num > maxNum) maxNum = num; } });
+                            rec['ID'] = 'TX-' + String(maxNum + 1).padStart(4, '0');
+                        }
+                        if (!rec['Waktu Masuk']) rec['Waktu Masuk'] = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
+                        if (rec['Pembayaran'] === 'Potong Kuota' && rec['Kg Terpakai']) {
+                            let cust = appData.pelanggan.find(p => p['Nama Pelanggan'] === rec['Nama Pelanggan']);
+                            if (cust) { let sisa = parseFloat(cust['Sisa Kuota (Kg)']) - parseFloat(rec['Kg Terpakai']); cust['Sisa Kuota (Kg)'] = sisa < 0 ? 0 : Math.round(sisa * 100) / 100; }
+                        }
+                        let exists = appData.produksi.findIndex(x => x.ID === rec.ID);
+                        if (exists >= 0) appData.produksi[exists] = rec; else appData.produksi.push(rec);
+                        if(database) database.ref('appData').set(appData);
+                        if (this._onSuccess) this._onSuccess({ success: true, message: "Transaksi Tersimpan Cepat!", data: appData.produksi, pelanggan: appData.pelanggan, notaInfo: rec });
+                        
+                        fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload }) })
+                        .then(res => res.json()).then(resData => {
+                            if (resData.success) {
+                                if (resData.data) appData.produksi = resData.data; if (resData.pelanggan) appData.pelanggan = resData.pelanggan;
+                                if(database) database.ref('appData').set(appData);
+                            }
+                        }).catch(e => console.error("GAS Sync Error", e));
+                        return this;
+                    },
+
+                    updateStatusProduksi: function(id, status, pmbStatus) {
+                        let target = appData.produksi.find(x => x.ID === id);
+                        if (target) { target.Status = status; target.Pembayaran = pmbStatus; if (pmbStatus === 'Lunas') target['Sisa Bayar'] = 0; }
+                        if(database) database.ref('appData/produksi').set(appData.produksi);
+                        if(this._onSuccess) this._onSuccess({ success: true, message: "Status Diperbarui!", data: appData.produksi });
+                        
+                        fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateStatusProduksi', payload: {id: id, status: status, pmbStatus: pmbStatus} }) })
+                        .then(res => res.json()).then(resData => {
+                            if (resData.success && resData.data) { appData.produksi = resData.data; if(database) database.ref('appData').set(appData); }
+                        }).catch(e => console.error(e));
+                        return this;
+                    },
+
+                    _backgroundSyncGasToFirebase: function() {
+                        fetch(GAS_URL + "?action=getInitialData", { method: 'GET' })
+                        .then(res => res.json())
+                        .then(data => { if(data && data.produksi && database) database.ref('appData').set(data); })
+                        .catch(e => console.log("Background sync terganggu."));
                     }
                 };
             }
