@@ -72,7 +72,8 @@ if (typeof google === 'undefined') {
                     },
 
                     _fetchFromGas: function() {
-                        fetch(GAS_URL + "?action=getInitialData", { method: 'GET' })
+                        // ZETTBOT FIX ANTI-CACHE: Menambahkan timestamp agar browser/vercel selalu menarik data terbaru
+                        fetch(GAS_URL + "?action=getInitialData&t=" + new Date().getTime(), { method: 'GET' })
                         .then(res => res.json())
                         .then(data => {
                             if(data && data.produksi) { 
@@ -106,7 +107,6 @@ if (typeof google === 'undefined') {
                         let key = sheet.toLowerCase().replace('layanan', '');
                         if (!appData[key]) appData[key] = [];
                         
-                        // ZETTBOT FIX: Generate ID Aktual Secara Lokal (Menghapus masalah PEL-TMP mismatch)
                         let prefixMap = { 'Pelanggan': 'PLG', 'LayananWaktu': 'LWT', 'LayananKiloan': 'LKL', 'LayananSatuan': 'LST', 'LayananPewangi': 'LPW', 'LayananMember': 'LMB', 'Users': 'USR' };
                         let prefix = prefixMap[sheet] || sheet.substring(0, 3).toUpperCase();
                         let maxNum = 0;
@@ -124,7 +124,6 @@ if (typeof google === 'undefined') {
                         if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
                         if (this._onSuccess) this._onSuccess({ success: true, message: "Data Tersimpan (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
                         
-                        // ZETTBOT FIX: Background fetch ke Google Sheets
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
                         .then(res => res.json()).then(resData => {
                             if (resData.success && resData.data) {
@@ -200,7 +199,6 @@ if (typeof google === 'undefined') {
                             rec['ID'] = 'TX-' + String(maxNum + 1).padStart(4, '0');
                         }
 
-                        // ZETTBOT FIX: Menginjeksi Data Pelanggan & Nota secara lokal untuk mengatasi "UNDEFINED" di form UI
                         if (!rec['ID Pelanggan']) {
                             let cust = (appData.pelanggan || []).find(p => p['Nama Pelanggan'] === rec['Nama Pelanggan']);
                             if (cust) rec['ID Pelanggan'] = cust['ID'];
@@ -228,7 +226,6 @@ if (typeof google === 'undefined') {
                         if (!rec['Status']) {
                             rec['Status'] = 'Proses';
                         }
-                        // END ZETTBOT FIX
 
                         if (!rec['Waktu Masuk']) {
                             rec['Waktu Masuk'] = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
@@ -280,9 +277,15 @@ if (typeof google === 'undefined') {
                     },
 
                     _backgroundSyncGasToFirebase: function() {
-                        fetch(GAS_URL + "?action=getInitialData", { method: 'GET' })
+                        // ZETTBOT FIX ANTI-CACHE & SYNC MEMORY: Memastikan sinkronisasi foto berhasil meresap ke memori lokal
+                        fetch(GAS_URL + "?action=getInitialData&t=" + new Date().getTime(), { method: 'GET' })
                         .then(res => res.json())
-                        .then(data => { if(data && data.produksi && database) database.ref('appData').set(sanitizeFbKeys(data)); })
+                        .then(data => { 
+                            if(data && data.produksi && database) {
+                                appData = data; 
+                                database.ref('appData').set(sanitizeFbKeys(data)); 
+                            } 
+                        })
                         .catch(e => console.log("Background sync terganggu."));
                     }
                 };
