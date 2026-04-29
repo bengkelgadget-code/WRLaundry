@@ -549,8 +549,15 @@ function switchView(viewId) {
     if (viewId === 'staff') {
         if (mainHeader) { mainHeader.style.display = 'none'; }
         if (adminArea) { adminArea.style.display = 'none'; }
-        if (sidebar) { sidebar.style.display = 'none'; } 
-        if (sidebarBackdrop) { sidebarBackdrop.style.display = 'none'; }
+        
+        // ZETTBOT FIX: Sidebar tetap muncul di Desktop saat mode Kasir
+        if (window.innerWidth < 768) {
+            if (sidebar) { sidebar.style.display = 'none'; } 
+            if (sidebarBackdrop) { sidebarBackdrop.style.display = 'none'; }
+        } else {
+            if (sidebar) { sidebar.style.display = ''; } 
+            if (sidebarBackdrop) { sidebarBackdrop.style.display = ''; }
+        }
     } else {
         if (mainHeader) { mainHeader.style.display = ''; }
         if (adminArea) { adminArea.style.display = ''; }
