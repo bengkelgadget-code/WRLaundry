@@ -41,6 +41,18 @@ function cleanPhoneQuotes(arr) {
     });
 }
 
+// ZETTBOT PRO FIX: Helper untuk mengamankan foto base64 lokal agar tidak tertimpa data sinkronisasi kosong dari Sheets
+function mergeProduksiData(newData) {
+    if (!newData) return newData;
+    newData.forEach(function(newRow) {
+        var oldRow = (appData.produksi || []).find(function(x) { return x.ID === newRow.ID; });
+        if (oldRow && oldRow['Foto'] && String(oldRow['Foto']).startsWith('data:') && (!newRow['Foto'] || !String(newRow['Foto']).startsWith('http'))) {
+            newRow['Foto'] = oldRow['Foto'];
+        }
+    });
+    return newData;
+}
+
 if (typeof google === 'undefined') {
     console.log("🌐 Berjalan di Vercel/Eksternal - ZettBridge Hybrid Aktif!");
     window.google = {
@@ -72,11 +84,11 @@ if (typeof google === 'undefined') {
                     },
 
                     _fetchFromGas: function() {
-                        // ZETTBOT FIX ANTI-CACHE: Menambahkan timestamp agar browser/vercel selalu menarik data terbaru
                         fetch(GAS_URL + "?action=getInitialData&t=" + new Date().getTime(), { method: 'GET' })
                         .then(res => res.json())
                         .then(data => {
                             if(data && data.produksi) { 
+                                data.produksi = mergeProduksiData(data.produksi);
                                 appData = data; 
                                 if(database) database.ref('appData').set(sanitizeFbKeys(data)); 
                                 console.log("✅ Migrasi Data ke Firebase Berhasil!"); 
@@ -93,6 +105,7 @@ if (typeof google === 'undefined') {
                             .then(res => res.json())
                             .then(data => {
                                 if(data && data.produksi) { 
+                                    data.produksi = mergeProduksiData(data.produksi);
                                     appData = data; 
                                     if(database) database.ref('appData').set(sanitizeFbKeys(data)); 
                                 }
@@ -251,7 +264,7 @@ if (typeof google === 'undefined') {
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload }) })
                         .then(res => res.json()).then(resData => {
                             if (resData.success) {
-                                if (resData.data) appData.produksi = resData.data; 
+                                if (resData.data) appData.produksi = mergeProduksiData(resData.data); 
                                 if (resData.pelanggan) appData.pelanggan = cleanPhoneQuotes(resData.pelanggan);
                                 if(database) database.ref('appData').set(sanitizeFbKeys(appData));
                                 
@@ -271,7 +284,7 @@ if (typeof google === 'undefined') {
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateStatusProduksi', payload: {id: id, status: status, pmbStatus: pmbStatus} }) })
                         .then(res => res.json()).then(resData => {
                             if (resData.success && resData.data) { 
-                                appData.produksi = resData.data; 
+                                appData.produksi = mergeProduksiData(resData.data); 
                                 if(database) database.ref('appData').set(sanitizeFbKeys(appData)); 
                                 
                                 if (typeof window.renderStaffTable === 'function') window.renderStaffTable(true);
@@ -282,11 +295,11 @@ if (typeof google === 'undefined') {
                     },
 
                     _backgroundSyncGasToFirebase: function() {
-                        // ZETTBOT FIX ANTI-CACHE & SYNC MEMORY: Memastikan sinkronisasi foto berhasil meresap ke memori lokal
                         fetch(GAS_URL + "?action=getInitialData&t=" + new Date().getTime(), { method: 'GET' })
                         .then(res => res.json())
                         .then(data => { 
                             if(data && data.produksi && database) {
+                                data.produksi = mergeProduksiData(data.produksi);
                                 appData = data; 
                                 database.ref('appData').set(sanitizeFbKeys(data)); 
                             } 
