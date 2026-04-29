@@ -1,108 +1,216 @@
-// ZETTBOT BRIDGE: Auto-Switch Backend (GAS / Vercel)
-// ====================================================================
-// PERHATIAN: Masukkan URL Web App (hasil deploy GAS terbaru) Anda di sini!
+/**
+ * ZETTBOT HYBRID ENGINE - SCRIPT CORE
+ * Menghubungkan Firebase RTDB (Instan) dengan Google Sheets (Background Backup)
+ */
+
+// ==============================================================
+// 1. KONFIGURASI BACKEND & FIREBASE
+// ==============================================================
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxB7xCVFJKX28NuPYASvlrWoDgcWM4cR6-101vfJ2x1pyjVaFMGaFfpvHE5SlKpuH4ULQ/exec"; 
 
+const firebaseConfig = {
+    apiKey: "AIzaSyBbTTYAroluZ3UYMPgnoxLYn1aqPFq9Wik",
+    authDomain: "kasirwaroeng-laundry.firebaseapp.com",
+    projectId: "kasirwaroeng-laundry",
+    storageBucket: "kasirwaroeng-laundry.firebasestorage.app",
+    messagingSenderId: "496085821478",
+    appId: "1:496085821478:web:420e0e871de41ccf409ee7",
+    measurementId: "G-832ZC51E2V",
+    databaseURL: "https://kasirwaroeng-laundry-default-rtdb.asia-southeast1.firebasedatabase.app/" 
+};
+
+// Inisialisasi Firebase
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
+// ==============================================================
+// 2. ZETTBRIDGE: OPTIMISTIC UI HYBRID SYNC
+// ==============================================================
 if (typeof google === 'undefined') {
-    console.log("🌐 Berjalan di Vercel/Eksternal - ZettBridge Aktif!");
     window.google = {
         script: {
-            // ZETTBOT PRO FIX: Menggunakan getter agar setiap pemanggilan adalah sesi baru yang independen
             get run() {
                 return {
                     _onSuccess: null,
                     _onFailure: null,
                     withSuccessHandler: function(cb) { this._onSuccess = cb; return this; },
                     withFailureHandler: function(cb) { this._onFailure = cb; return this; },
-                    getInitialData: function() { this._doFetch('getInitialData', {}); return this; },
-                    saveRecord: function(sheet, data) { this._doFetch('saveRecord', {sheetName: sheet, data: data}); return this; },
-                    updateRecord: function(sheet, id, data) { this._doFetch('updateRecord', {sheetName: sheet, id: id, data: data}); return this; },
-                    deleteRecord: function(sheet, id) { this._doFetch('deleteRecord', {sheetName: sheet, id: id}); return this; },
-                    
-                    // ZETTBOT FIX: Menyelaraskan pengiriman nama action ke Google menjadi saveTransaksiStaff
-                    saveTransAksiStaff: function(p1, p2) {
-                        var payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
-                        this._doFetch('saveTransaksiStaff', payload);
-                        return this;
-                    },
-                    saveTransaksiStaff: function(p1, p2) {
-                        var payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
-                        this._doFetch('saveTransaksiStaff', payload);
-                        return this;
-                    },
-                    updateTransaksiStaffStatus: function(id, status, pmbStatus, sisaBayar) {
-                        this._doFetch('updateStatusProduksi', {id: id, status: status, pmbStatus: pmbStatus, sisaBayar: sisaBayar});
-                        return this;
-                    },
-                    updateStatusProduksi: function(id, status, pmbStatus, sisaBayar) {
-                        this._doFetch('updateStatusProduksi', {id: id, status: status, pmbStatus: pmbStatus, sisaBayar: sisaBayar});
-                        return this;
-                    },
-                    
-                    _doFetch: function(action, payload) {
-                        var onSuccess = this._onSuccess;
-                        var onFailure = this._onFailure;
-                        
-                        if(!GAS_URL) { 
-                            console.error("GAS_URL KOSONG!"); 
-                            if(onFailure) setTimeout(function() { onFailure("GAS_URL belum diisi. Hubungi Developer."); }, 0); 
-                            return; 
-                        }
-                        
-                        var controller = null;
-                        var timeoutId = null;
-                        var fetchOptions = { 
-                            method: 'POST', 
-                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                            body: JSON.stringify({ action: action, payload: payload })
-                        };
 
-                        if (window.AbortController) {
-                            controller = new AbortController();
-                            fetchOptions.signal = controller.signal;
-                            timeoutId = setTimeout(function() { controller.abort(); }, 45000); 
+                    // LOAD AWAL: Baca dari Firebase (Instan), Sambil sync GAS di belakang layar
+                    getInitialData: function() {
+                        database.ref('appData').once('value').then(snapshot => {
+                            if (snapshot.exists() && snapshot.val().produksi) {
+                                console.log("⚡ Memuat data dari Firebase (Instan)");
+                                appData = snapshot.val();
+                                if(this._onSuccess) this._onSuccess(appData);
+                                this._backgroundSyncGasToFirebase();
+                            } else {
+                                console.log("⏳ Firebase kosong, memuat dari Google Sheets...");
+                                fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'getInitialData', payload: {} }) })
+                                .then(res => res.json()).then(data => {
+                                    if(data.produksi) { appData = data; database.ref('appData').set(data); }
+                                    if(this._onSuccess) this._onSuccess(data);
+                                }).catch(err => { if(this._onFailure) this._onFailure(err.message); });
+                            }
+                        }).catch(e => {
+                            console.error("Firebase Error:", e);
+                            if(this._onFailure) this._onFailure("Gagal terhubung ke Database");
+                        });
+                        return this;
+                    },
+
+                    // SIMPAN TRANSAKSI (KASIR): Instan sukses di layar, GAS upload di background
+                    saveTransaksiStaff: function(p1, p2) {
+                        let payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
+                        let rec = payload.recordObj || payload;
+
+                        if (!rec['ID']) {
+                            let maxNum = 0;
+                            (appData.produksi || []).forEach(r => {
+                                let id = String(r.ID || '');
+                                if(id.startsWith('TX-')) {
+                                    let num = parseInt(id.split('-')[1]);
+                                    if(!isNaN(num) && num > maxNum) maxNum = num;
+                                }
+                            });
+                            rec['ID'] = 'TX-' + String(maxNum + 1).padStart(4, '0');
                         }
                         
-                        fetch(GAS_URL, fetchOptions)
-                        .then(function(res) { 
-                            if (timeoutId) clearTimeout(timeoutId);
-                            if(!res.ok) throw new Error("Gagal terhubung ke Server (HTTP " + res.status + ")");
-                            return res.text(); 
-                        })
-                        .then(function(text) {
-                            var data;
-                            try {
-                                data = JSON.parse(text);
-                            } catch(e) {
-                                console.error("ZettBridge Parse Error:", text);
-                                if(onFailure) setTimeout(function() { onFailure("Respon dari server gagal dibaca. Coba lagi."); }, 0);
-                                return;
+                        if (!rec['Waktu Masuk']) {
+                            rec['Waktu Masuk'] = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
+                        }
+
+                        if (rec['Pembayaran'] === 'Potong Kuota' && rec['Kg Terpakai']) {
+                            let cust = appData.pelanggan.find(p => p['Nama Pelanggan'] === rec['Nama Pelanggan']);
+                            if (cust) {
+                                let sisa = parseFloat(cust['Sisa Kuota (Kg)']) - parseFloat(rec['Kg Terpakai']);
+                                cust['Sisa Kuota (Kg)'] = sisa < 0 ? 0 : Math.round(sisa * 100) / 100;
                             }
-                            if(onSuccess) setTimeout(function() { onSuccess(data); }, 0);
-                        })
-                        .catch(function(err) { 
-                            if (timeoutId) clearTimeout(timeoutId);
-                            console.error("ZettBridge Fetch Error:", err);
-                            if (err.name === 'AbortError') {
-                                if(onFailure) setTimeout(function() { onFailure("Koneksi lambat (Timeout). Silakan coba lagi."); }, 0);
-                            } else {
-                                if(onFailure) setTimeout(function() { onFailure(err.message || "Gagal menghubungi server."); }, 0);
+                        }
+
+                        let exists = appData.produksi.findIndex(x => x.ID === rec.ID);
+                        if (exists >= 0) appData.produksi[exists] = rec; else appData.produksi.push(rec);
+                        database.ref('appData').set(appData);
+
+                        if (this._onSuccess) {
+                            this._onSuccess({
+                                success: true, message: "Transaksi Tersimpan Cepat!", data: appData.produksi, pelanggan: appData.pelanggan, notaInfo: rec
+                            });
+                        }
+
+                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload }) })
+                        .then(res => res.json()).then(resData => {
+                            if (resData.success) {
+                                if (resData.data) appData.produksi = resData.data;
+                                if (resData.pelanggan) appData.pelanggan = resData.pelanggan;
+                                database.ref('appData').set(appData);
                             }
-                        });
+                        }).catch(e => console.error("GAS Sync Error", e));
+
+                        return this;
+                    },
+
+                    // SIMPAN MASTER DATA ADMIN (Instan)
+                    saveRecord: function(sheet, data) {
+                        let key = sheet.toLowerCase().replace('layanan', '');
+                        if (!appData[key]) appData[key] = [];
+                        let prefix = sheet.substring(0, 3).toUpperCase();
+                        data['ID'] = prefix + '-TMP-' + Math.floor(Math.random() * 1000);
+                        
+                        appData[key].push(data);
+                        database.ref('appData/' + key).set(appData[key]);
+                        if (this._onSuccess) this._onSuccess({ success: true, message: "Data Tersimpan (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
+                        
+                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
+                        .then(res => res.json()).then(resData => {
+                            if (resData.success && resData.data) {
+                                appData[key] = resData.data;
+                                if(resData.pelanggan) appData.pelanggan = resData.pelanggan;
+                                database.ref('appData').set(appData);
+                            }
+                        }).catch(e => {});
+                        return this;
+                    },
+
+                    // UPDATE MASTER DATA (Instan)
+                    updateRecord: function(sheet, id, data) {
+                        let key = sheet.toLowerCase().replace('layanan', '');
+                        if (appData[key]) {
+                            let idx = appData[key].findIndex(x => String(x.ID) === String(id));
+                            if(idx >= 0) { data.ID = id; appData[key][idx] = Object.assign({}, appData[key][idx], data); }
+                            database.ref('appData/' + key).set(appData[key]);
+                        }
+                        if(this._onSuccess) this._onSuccess({ success: true, message: "Data Diupdate (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
+
+                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'updateRecord', payload: {sheetName: sheet, id: id, data: data} }) })
+                        .then(res => res.json()).then(resData => {
+                            if (resData.success && resData.data) {
+                                appData[key] = resData.data;
+                                if(resData.pelanggan) appData.pelanggan = resData.pelanggan;
+                                database.ref('appData').set(appData);
+                            }
+                        }).catch(e => {});
+                        return this;
+                    },
+
+                    // HAPUS DATA (Instan)
+                    deleteRecord: function(sheet, id) {
+                        let key = sheet.toLowerCase().replace('layanan', '');
+                        if (appData[key]) {
+                            appData[key] = appData[key].filter(x => String(x.ID) !== String(id));
+                            database.ref('appData/' + key).set(appData[key]);
+                        }
+                        if(this._onSuccess) this._onSuccess({ success: true, message: "Terhapus (Instan)!", data: appData[key] });
+
+                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteRecord', payload: {sheetName: sheet, id: id} }) })
+                        .then(res => res.json()).then(resData => {
+                            if (resData.success && resData.data) {
+                                appData[key] = resData.data;
+                                if(resData.pelanggan) appData.pelanggan = resData.pelanggan;
+                                database.ref('appData').set(appData);
+                            }
+                        }).catch(e => {});
+                        return this;
+                    },
+
+                    // UPDATE STATUS TRANSAKSI (Instan)
+                    updateStatusProduksi: function(id, status, pmbStatus) {
+                        let target = appData.produksi.find(x => x.ID === id);
+                        if (target) {
+                            target.Status = status;
+                            target.Pembayaran = pmbStatus;
+                            if (pmbStatus === 'Lunas') target['Sisa Bayar'] = 0;
+                        }
+                        database.ref('appData/produksi').set(appData.produksi);
+                        if(this._onSuccess) this._onSuccess({ success: true, message: "Status Diperbarui!", data: appData.produksi });
+
+                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'updateStatusProduksi', payload: {id: id, status: status, pmbStatus: pmbStatus} }) })
+                        .then(res => res.json()).then(resData => {
+                            if (resData.success && resData.data) {
+                                appData.produksi = resData.data; database.ref('appData').set(appData);
+                            }
+                        }).catch(e => console.error(e));
+                        return this;
+                    },
+
+                    _backgroundSyncGasToFirebase: function() {
+                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'getInitialData', payload: {} }) })
+                        .then(res => res.json())
+                        .then(data => {
+                            if(data && data.produksi) {
+                                database.ref('appData').set(data);
+                            }
+                        }).catch(e => console.log("Background sync terganggu."));
                     }
                 };
             }
         }
     };
 }
-// ====================================================================
 
-/**
- * ZETTBOT - SCRIPT CORE
- * Berisi Variabel Global, Utilitas, Navigasi, dan Inisialisasi Sistem
- */
-
-// GLOBAL STATE VARIABLES
+// ==============================================================
+// 3. GLOBAL VARIABLES & UTILITIES
+// ==============================================================
 var appData = { produksi: [], pelanggan: [], waktu: [], kiloan: [], satuan: [], pewangi: [], member: [], users: [] };
 var tsInstances = {};
 var isLoggedIn = false;
@@ -115,7 +223,6 @@ var currentDetailId = null;
 var isFormPopulating = false; 
 var zettConfirmCallback = null;
 
-// GLOBAL PAGINATION STATE
 var pageConfig = {
     'Produksi': { page: 1, limit: 15 },
     'Pelanggan': { page: 1, limit: 15 },
@@ -141,23 +248,18 @@ var masterConfig = {
     'Users': { id: 'users', title: 'Manajemen User', fields: [{name: 'Username', type: 'text'}, {name: 'Nama Lengkap', type: 'text'}, {name: 'Password', type: 'password'}, {name: 'Role', type: 'select', options: ['ADMIN', 'STAFF']}] }
 };
 
-// UTILITIES
 function resolvePelanggan(id) {
-    var cust = (appData.pelanggan || []).find(function(c) { return String(c['ID']) === String(id); });
-    if (cust) return { nama: cust['Nama Pelanggan'], hp: cust['No Telpon'] };
-    return { nama: 'Unknown / Dihapus', hp: '-' };
+    var cust = (appData.pelanggan || []).find(c => String(c['ID']) === String(id) || c['Nama Pelanggan'] === id);
+    return cust ? { nama: cust['Nama Pelanggan'], hp: cust['No Telpon'] } : { nama: id || 'Unknown', hp: '-' };
 }
 
 function resolveLayananNameForProduksi(layananRaw) {
     if (!layananRaw) return '-';
     try {
         var items = JSON.parse(layananRaw);
-        var arr = [];
-        items.forEach(function(item) { arr.push(item.nama + ' (' + item.qty + ' ' + item.satuan + ')'); });
-        return arr.join(', ');
-    } catch(e) {
-        return String(layananRaw).replace(/\+/g, ', ');
-    }
+        var itemArr = Array.isArray(items) ? items : (items.items || []);
+        return itemArr.map(i => i.nama + ' (' + i.qty + ' ' + i.satuan + ')').join(', ');
+    } catch(e) { return String(layananRaw).replace(/\+/g, ', '); }
 }
 
 function showLoading(show) { 
@@ -166,12 +268,11 @@ function showLoading(show) {
     else { el.classList.add('opacity-0'); setTimeout(function() { el.classList.add('hidden'); }, 300); } 
 }
 
-function showToast(message, type) {
-    type = type || "success"; 
+function showToast(message, type = "success") {
     var toast = document.getElementById('toast'); if (!toast) return; 
     document.getElementById('toast-msg').innerText = message;
     toast.style.zIndex = '99999';
-    toast.className = 'fixed top-5 right-5 md:right-5 transform translate-x-0 transition-transform duration-300 flex items-center shadow-2xl rounded-2xl p-4 max-w-sm ' + (type === 'success' ? 'bg-slate-900' : 'bg-red-500');
+    toast.className = 'fixed top-5 right-5 md:right-5 transform translate-x-0 transition-transform duration-300 flex items-center shadow-2xl rounded-2xl p-4 max-w-sm ' + (type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white');
     var icon = document.getElementById('toast-icon'); 
     if(icon) { icon.className = 'ph-fill ph-' + (type === 'success' ? 'check-circle text-emerald-400' : 'warning-circle text-white') + ' text-2xl mr-3'; }
     setTimeout(function() { toast.classList.remove('translate-x-0'); toast.classList.add('translate-x-[150%]'); }, 3000);
@@ -219,17 +320,11 @@ function getDriveDirectUrl(url) {
 function makeTextFlexible(elementId) {
     var el = document.getElementById(elementId);
     if (!el) return;
-    
-    el.classList.remove('truncate');
-    el.style.whiteSpace = 'nowrap'; 
-    el.style.transition = 'font-size 0.2s ease-out';
-    
+    el.classList.remove('truncate'); el.style.whiteSpace = 'nowrap'; el.style.transition = 'font-size 0.2s ease-out';
     function resizeFont() {
         el.style.fontSize = '1.875rem';
-        var parent = el.parentElement;
-        if (!parent) return;
+        var parent = el.parentElement; if (!parent) return;
         var maxWidth = parent.clientWidth;
-        
         if (el.scrollWidth > maxWidth && maxWidth > 0) {
             var currentSize = parseFloat(window.getComputedStyle(el).fontSize);
             var newSize = currentSize * (maxWidth / el.scrollWidth) * 0.95;
@@ -237,7 +332,6 @@ function makeTextFlexible(elementId) {
             el.style.fontSize = newSize + 'px';
         }
     }
-
     setTimeout(resizeFont, 100);
     var observer = new MutationObserver(function() { setTimeout(resizeFont, 50); });
     observer.observe(el, { characterData: true, childList: true, subtree: true });
@@ -247,11 +341,8 @@ function makeTextFlexible(elementId) {
 function changePage(view, newPage) {
     if (pageConfig[view]) {
         pageConfig[view].page = newPage;
-        if (view === 'Staff') {
-            if (typeof renderStaffTable === 'function') renderStaffTable(true);
-        } else {
-            if (typeof renderTable === 'function') renderTable(view, true);
-        }
+        if (view === 'Staff') { if (typeof renderStaffTable === 'function') renderStaffTable(true); } 
+        else { if (typeof renderTable === 'function') renderTable(view, true); }
     }
 }
 
@@ -259,11 +350,8 @@ function changeLimit(view, newLimit) {
     if (pageConfig[view]) {
         pageConfig[view].limit = parseInt(newLimit);
         pageConfig[view].page = 1; 
-        if (view === 'Staff') {
-            if (typeof renderStaffTable === 'function') renderStaffTable(true);
-        } else {
-            if (typeof renderTable === 'function') renderTable(view, true);
-        }
+        if (view === 'Staff') { if (typeof renderStaffTable === 'function') renderStaffTable(true); } 
+        else { if (typeof renderTable === 'function') renderTable(view, true); }
     }
 }
 
@@ -271,39 +359,24 @@ function generatePaginationHTML(view, totalItems) {
     var limit = pageConfig[view].limit;
     var currentPage = pageConfig[view].page;
     var totalPages = Math.ceil(totalItems / limit);
-    
     if (currentPage > totalPages && totalPages > 0) { pageConfig[view].page = 1; currentPage = 1; }
 
     var html = '<div class="flex flex-col sm:flex-row items-center justify-between w-full px-4 py-3 sm:py-3.5 bg-slate-50 border-t border-slate-200 rounded-b-2xl shrink-0 gap-3 relative z-[30] shadow-[0_-4px_10px_-4px_rgba(0,0,0,0.05)]">';
-
     html += '<div class="flex items-center justify-between sm:justify-start w-full sm:w-auto gap-3">';
     html += '<div class="text-[11px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">Hal <span class="font-black text-teal-600">' + currentPage + '</span> / ' + Math.max(1, totalPages) + '</div>';
-    
-    html += '<div class="flex items-center gap-2">';
-    html += '<span class="text-[10px] font-bold text-slate-400 uppercase hidden sm:inline">Tampilkan:</span>';
-    html += '<select onchange="changeLimit(\'' + view + '\', this.value)" class="text-xs font-bold text-slate-700 border border-slate-300 rounded-lg px-2 py-1.5 bg-white shadow-sm outline-none focus:ring-2 focus:ring-teal-400 cursor-pointer hover:bg-slate-50 transition-colors">';
-    [15, 25, 50, 100].forEach(function(val) {
-        html += '<option value="' + val + '" ' + (limit == val ? 'selected' : '') + '>' + val + ' Baris</option>';
-    });
-    html += '</select>';
-    html += '</div>';
-    html += '</div>';
-
+    html += '<div class="flex items-center gap-2"><span class="text-[10px] font-bold text-slate-400 uppercase hidden sm:inline">Tampilkan:</span><select onchange="changeLimit(\'' + view + '\', this.value)" class="text-xs font-bold text-slate-700 border border-slate-300 rounded-lg px-2 py-1.5 bg-white shadow-sm outline-none focus:ring-2 focus:ring-teal-400 cursor-pointer hover:bg-slate-50 transition-colors">';
+    [15, 25, 50, 100].forEach(function(val) { html += '<option value="' + val + '" ' + (limit == val ? 'selected' : '') + '>' + val + ' Baris</option>'; });
+    html += '</select></div></div>';
     html += '<div class="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-2">';
     html += '<p class="text-[10px] font-bold text-slate-400 uppercase hidden md:block mr-2">Total: <span class="text-slate-600">' + totalItems + ' Data</span></p>';
-
     var prevDisabled = currentPage <= 1 ? 'disabled class="opacity-50 cursor-not-allowed px-4 py-2 border border-slate-200 rounded-xl text-xs font-bold bg-slate-100 text-slate-400"' : 'onclick="changePage(\''+view+'\', '+(currentPage-1)+')" class="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold bg-white text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 transition-all cursor-pointer"';
     html += '<button type="button" ' + prevDisabled + '><i class="ph-bold ph-caret-left mr-1"></i> Prev</button>';
-
     var nextDisabled = currentPage >= totalPages ? 'disabled class="opacity-50 cursor-not-allowed px-4 py-2 border border-slate-200 rounded-xl text-xs font-bold bg-slate-100 text-slate-400"' : 'onclick="changePage(\''+view+'\', '+(currentPage+1)+')" class="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold bg-white text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 transition-all cursor-pointer"';
     html += '<button type="button" ' + nextDisabled + '>Next <i class="ph-bold ph-caret-right ml-1"></i></button>';
-    
     html += '</div></div>';
-
     return html;
 }
 
-// MODAL CONTROLS & AUTO-FOCUS
 function openModal(modalId) {
     isFormPopulating = true; isEditMode = false; currentEditId = null; 
     var modal = document.getElementById(modalId);
@@ -322,7 +395,6 @@ function openModal(modalId) {
     }
     setTimeout(function() { 
         isFormPopulating = false; 
-        var modal = document.getElementById(modalId);
         if(modal) {
             var firstInput = modal.querySelector('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])');
             if(firstInput) {
@@ -338,7 +410,6 @@ function closeModal(modalId) {
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); } 
 }
 
-// SETTINGS
 function applySettings() {
     var loginTitle = document.getElementById('ui-login-title'); var sidebarTitle = document.getElementById('ui-sidebar-title'); var staffTitle = document.getElementById('ui-staff-title');
     if(loginTitle) loginTitle.innerText = appSettings.nama; 
@@ -407,17 +478,9 @@ function saveSettings() {
     localStorage.setItem('zettSettings', JSON.stringify(appSettings)); closeModal('modal-settings'); applySettings(); showToast('Pengaturan berhasil disimpan!');
 }
 
-// INITIALIZATION & RENDER
 document.addEventListener('DOMContentLoaded', function() {
     applySettings(); 
-    
-    if (typeof generateDynamicViews === 'function') {
-        generateDynamicViews(); 
-    } else {
-        console.error("ZettBOT Warning: generateDynamicViews tidak ditemukan.");
-        setTimeout(function() { showLoading(false); showToast("Sistem gagal dimuat. Cek file JS Anda!", "error"); }, 1000);
-    }
-    
+    if (typeof generateDynamicViews === 'function') generateDynamicViews(); 
     fetchInitialData();
     makeTextFlexible('dash-pendapatan');
     
@@ -440,32 +503,10 @@ window.addEventListener('beforeunload', function (e) { var modalStaff = document
 function fetchInitialData() {
     showLoading(true);
     if (typeof google !== 'undefined' && google.script && google.script.run) {
-        google.script.run.withSuccessHandler(function(response) {
-            if(response && response.pelanggan) { response.pelanggan = response.pelanggan.map(function(p) { if(p['No Telpon']) { var hpStr = String(p['No Telpon']); if(hpStr.startsWith("'")) { hpStr = hpStr.substring(1); } p['No Telpon'] = hpStr; } return p; }); }
-            
-            appData = response || {produksi:[], pelanggan:[], waktu:[], kiloan:[], satuan:[], pewangi:[], member:[], users:[]};
-            
-            if (!appData.produksi) appData.produksi = [];
-            if (!appData.pelanggan) appData.pelanggan = [];
-            if (!appData.waktu) appData.waktu = [];
-            if (!appData.kiloan) appData.kiloan = [];
-            if (!appData.satuan) appData.satuan = [];
-            if (!appData.pewangi) appData.pewangi = [];
-            if (!appData.member) appData.member = [];
-            if (!appData.users) appData.users = [];
-            
-            showLoading(false);
-            
-            if (isLoggedIn) {
-                if (currentUser && currentUser.Role === 'ADMIN') { updateDashboard(); renderAllTables(); }
-                updateAllDropdowns();
-                if (typeof renderStaffTable === 'function') renderStaffTable(true);
-            }
-        }).withFailureHandler(function(error) { showLoading(false); showToast("Koneksi Database Gagal", "error"); }).getInitialData();
+        google.script.run.getInitialData();
     } else { setTimeout(function() { showLoading(false); }, 500); }
 }
 
-// NAVIGATION & AUTH
 function handleLogin(e) {
     e.preventDefault(); var u = document.getElementById('login-username').value.trim(); var p = document.getElementById('login-password').value;
     var user = (appData.users || []).find(function(x) { return String(x.Username).trim() === u && String(x.Password) === p; });
@@ -481,14 +522,9 @@ function executeLogin(user) {
     if(document.getElementById('user-profile-name')) { document.getElementById('user-profile-name').innerText = user['Nama Lengkap'] || 'Staff'; }
     if(document.getElementById('user-profile-role')) { document.getElementById('user-profile-role').innerText = 'ROLE: ' + (user['Role'] || 'STAFF'); }
     if(document.getElementById('user-profile-avatar')) { document.getElementById('user-profile-avatar').innerText = (user['Nama Lengkap'] || 'S').charAt(0); }
-    if(user.Role === 'ADMIN') { updateDashboard(); renderAllTables(); }
-    updateAllDropdowns(); 
-    
-    if (typeof renderStaffTable === 'function') { 
-        renderStaffTable(); 
-    } else { 
-        console.warn("ZettBOT Warning: renderStaffTable tidak ditemukan. Cek isi file script-pos.js Anda!"); 
-    }
+    if(user.Role === 'ADMIN') { if(typeof updateDashboard === 'function') updateDashboard(); if(typeof renderAllTables === 'function') renderAllTables(); }
+    if(typeof updateAllDropdowns === 'function') updateAllDropdowns(); 
+    if (typeof renderStaffTable === 'function') renderStaffTable(); 
     
     if(user.Role === 'STAFF') { switchView('staff'); } 
     else { switchView('dashboard'); }
@@ -531,65 +567,4 @@ function logout() {
         var overlay = document.getElementById('login-overlay');
         if(overlay) { overlay.classList.remove('hidden'); overlay.classList.add('flex'); setTimeout(function() { overlay.classList.remove('opacity-0'); }, 10); }
     });
-}
-
-function switchView(viewId) {
-    document.querySelectorAll('.view-section').forEach(function(el) { el.classList.add('hidden'); el.classList.remove('flex'); });
-    var target = document.getElementById('view-' + viewId);
-    if (target) {
-        target.classList.remove('hidden');
-        if (viewId === 'staff') { target.classList.add('flex'); }
-    }
-    
-    var mainHeader = document.getElementById('main-header');
-    var adminArea = document.getElementById('admin-scroll-area');
-    var sidebar = document.getElementById('sidebar');
-    var sidebarBackdrop = document.getElementById('sidebar-backdrop');
-    
-    if (viewId === 'staff') {
-        if (mainHeader) { mainHeader.style.display = 'none'; }
-        if (adminArea) { adminArea.style.display = 'none'; }
-        
-        // ZETTBOT FIX: Sidebar tetap muncul di Desktop saat mode Kasir
-        if (window.innerWidth < 768) {
-            if (sidebar) { sidebar.style.display = 'none'; } 
-            if (sidebarBackdrop) { sidebarBackdrop.style.display = 'none'; }
-        } else {
-            if (sidebar) { sidebar.style.display = ''; } 
-            if (sidebarBackdrop) { sidebarBackdrop.style.display = ''; }
-        }
-    } else {
-        if (mainHeader) { mainHeader.style.display = ''; }
-        if (adminArea) { adminArea.style.display = ''; }
-        if (sidebar) { sidebar.style.display = ''; } 
-        if (sidebarBackdrop) { sidebarBackdrop.style.display = ''; }
-    }
-
-    document.querySelectorAll('.nav-btn').forEach(function(el) { el.classList.remove('!bg-teal-500', '!text-white'); });
-    var navBtn = document.getElementById('nav-' + viewId);
-    if (navBtn) { navBtn.classList.add('!bg-teal-500', '!text-white'); }
-    
-    var titleEl = document.getElementById('page-title');
-    if (titleEl && viewId !== 'staff') {
-        if (viewId === 'dashboard') titleEl.innerText = 'Dashboard';
-        else if (viewId === 'produksi') titleEl.innerText = 'Data Transaksi';
-        else if (viewId === 'users') titleEl.innerText = 'Kelola User';
-        else if (typeof masterConfig !== 'undefined' && masterConfig[viewId]) titleEl.innerText = masterConfig[viewId].title;
-    }
-    if (window.innerWidth < 768) {
-        var sidebarEl = document.getElementById('sidebar');
-        if (sidebarEl && !sidebarEl.classList.contains('-translate-x-full')) { toggleSidebar(); }
-    }
-}
-
-function toggleSidebar() { 
-    var sidebar = document.getElementById('sidebar'); 
-    var backdrop = document.getElementById('sidebar-backdrop');
-    if (sidebar) { 
-        if (window.innerWidth < 768) { 
-            var isClosed = sidebar.classList.contains('-translate-x-full');
-            if (isClosed) { sidebar.classList.remove('-translate-x-full'); if(backdrop) { backdrop.classList.remove('hidden'); setTimeout(function() { backdrop.classList.remove('opacity-0'); }, 10); } } 
-            else { sidebar.classList.add('-translate-x-full'); if(backdrop) { backdrop.classList.add('opacity-0'); setTimeout(function() { backdrop.classList.add('hidden'); }, 300); } }
-        } else { sidebar.classList.toggle('hidden'); } 
-    } 
 }
