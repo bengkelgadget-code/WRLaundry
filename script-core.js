@@ -20,7 +20,7 @@ if (typeof firebase !== 'undefined' && !firebase.apps.length) {
 }
 const database = (typeof firebase !== 'undefined') ? firebase.database() : null;
 
-// 🔥 FIREBASE KEY SANITIZER FIX (Mengatasi error invalid key 'Harga/Kg' dan 'Harga/Pcs')
+// 🔥 FIREBASE KEY SANITIZER FIX
 function sanitizeFbKeys(data) {
     if (!data) return data;
     return JSON.parse(JSON.stringify(data).replace(/"Harga\/Kg":/g, '"Harga_Kg":').replace(/"Harga\/Pcs":/g, '"Harga_Pcs":'));
@@ -30,7 +30,6 @@ function restoreFbKeys(data) {
     return JSON.parse(JSON.stringify(data).replace(/"Harga_Kg":/g, '"Harga/Kg":').replace(/"Harga_Pcs":/g, '"Harga/Pcs":'));
 }
 
-// ZETTBOT FIX: Membersihkan tanda kutip satu (') pada nomor telpon hasil tarikan GAS
 function cleanPhoneQuotes(arr) {
     if(!arr) return arr;
     return arr.map(function(p) {
@@ -41,7 +40,6 @@ function cleanPhoneQuotes(arr) {
     });
 }
 
-// ZETTBOT PRO FIX: Helper untuk mengamankan foto base64 lokal agar tidak tertimpa data sinkronisasi kosong dari Sheets
 function mergeProduksiData(newData) {
     if (!newData) return newData;
     newData.forEach(function(newRow) {
@@ -200,7 +198,6 @@ if (typeof google === 'undefined') {
                         let payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
                         let rec = payload.recordObj || payload;
                         
-                        // ZETTBOT FIX: Tampilkan foto base64 secara instan sebelum URL asli dari Drive turun
                         if (payload.fileData && payload.fileData.base64) {
                             rec['Foto'] = 'data:' + payload.fileData.mimeType + ';base64,' + payload.fileData.base64;
                         }
@@ -315,10 +312,8 @@ if (typeof google === 'undefined') {
 
 /**
  * ZETTBOT - SCRIPT CORE
- * Berisi Variabel Global, Utilitas, Navigasi, dan Inisialisasi Sistem
  */
 
-// GLOBAL STATE VARIABLES
 var appData = { produksi: [], pelanggan: [], waktu: [], kiloan: [], satuan: [], pewangi: [], member: [], users: [] };
 var tsInstances = {};
 var isLoggedIn = false;
@@ -331,7 +326,6 @@ var currentDetailId = null;
 var isFormPopulating = false; 
 var zettConfirmCallback = null;
 
-// GLOBAL PAGINATION STATE
 var pageConfig = {
     'Produksi': { page: 1, limit: 15 },
     'Pelanggan': { page: 1, limit: 15 },
@@ -357,7 +351,6 @@ var masterConfig = {
     'Users': { id: 'users', title: 'Manajemen User', fields: [{name: 'Username', type: 'text'}, {name: 'Nama Lengkap', type: 'text'}, {name: 'Password', type: 'password'}, {name: 'Role', type: 'select', options: ['ADMIN', 'STAFF']}] }
 };
 
-// UTILITIES
 function resolvePelanggan(id) {
     var cust = (appData.pelanggan || []).find(function(c) { return String(c['ID']) === String(id); });
     if (cust) return { nama: cust['Nama Pelanggan'], hp: cust['No Telpon'] };
@@ -637,15 +630,27 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchInitialData();
     makeTextFlexible('dash-pendapatan');
     
+    // ZETTBOT FIX: Auto-Scroll Presisi untuk Mobile. Memposisikan kolom input aktif di atas agar daftar suggest tampil luas
     var modalScrollArea = document.getElementById('staff-modal-scroll-area');
     if (modalScrollArea) {
         modalScrollArea.addEventListener('focus', function(e) {
             var target = e.target;
             if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') {
+                // Jeda 300ms agar animasi keyboard virtual di HP selesai naik
                 setTimeout(function() { 
-                    var wrapper = target.closest('[id^="staff-srv-row-"]') || target.closest('.mb-4') || target; 
-                    if (wrapper) { wrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-                }, 400); 
+                    var wrapper = target.closest('.ts-wrapper') ? target.closest('.ts-wrapper').parentElement : (target.closest('[id^="staff-srv-row-"]') || target.closest('.mb-4') || target); 
+                    if (wrapper && modalScrollArea) { 
+                        var rect = wrapper.getBoundingClientRect();
+                        var scrollRect = modalScrollArea.getBoundingClientRect();
+                        var currentScroll = modalScrollArea.scrollTop;
+                        
+                        // Tarik layar ke atas tepat 10 pixel dari posisi kolom tersebut
+                        modalScrollArea.scrollTo({
+                            top: currentScroll + (rect.top - scrollRect.top) - 10,
+                            behavior: 'smooth'
+                        });
+                    }
+                }, 300); 
             }
         }, true);
     }
@@ -672,7 +677,6 @@ function fetchInitialData() {
             
             showLoading(false);
             
-            // ZETTBOT FIX: Auto-Login dengan mengecek sesi di memori Browser
             var savedSession = localStorage.getItem('zettSession');
             if (savedSession && !isLoggedIn) {
                 try {
@@ -680,14 +684,13 @@ function fetchInitialData() {
                     var validUser = appData.users.find(function(u) { return String(u.Username).trim() === String(parsedUser.Username).trim() && String(u.Password) === String(parsedUser.Password); });
                     if (validUser) {
                         executeLogin(validUser);
-                        return; // Berhenti di sini karena UI sudah diurus oleh executeLogin
+                        return; 
                     } else {
-                        localStorage.removeItem('zettSession'); // Hapus jika user sudah tidak valid (misal: dihapus admin)
+                        localStorage.removeItem('zettSession'); 
                     }
                 } catch(e) {}
             }
 
-            // Update layar jika login biasa
             if (isLoggedIn) {
                 if (currentUser && currentUser.Role === 'ADMIN') { 
                     if(typeof updateDashboard === 'function') updateDashboard(); 
@@ -709,8 +712,6 @@ function handleLogin(e) {
 
 function executeLogin(user) {
     isLoggedIn = true; currentUser = user; renderSidebarMenu();
-    
-    // ZETTBOT FIX: Simpan identitas ke memori browser agar tidak hilang saat direfresh
     localStorage.setItem('zettSession', JSON.stringify(user));
     
     var btnBackAdmin = document.getElementById('btn-back-admin');
@@ -730,7 +731,7 @@ function executeLogin(user) {
     if (typeof renderStaffTable === 'function') { 
         renderStaffTable(true); 
     } else { 
-        console.warn("ZettBOT Warning: renderStaffTable tidak ditemukan."); 
+        console.warn("ZettBOT Warning: renderStaffTable tidak ditemukan. Cek isi file script-pos.js Anda!"); 
     }
     
     if(user.Role === 'STAFF') { switchView('staff'); } 
@@ -768,10 +769,7 @@ function renderSidebarMenu() {
 function logout() {
     zettConfirm("Konfirmasi Keluar", "Apakah Anda yakin ingin keluar dari sistem?", "info", function() {
         isLoggedIn = false; currentUser = null; 
-        
-        // ZETTBOT FIX: Hapus memori browser jika benar-benar klik Logout
         localStorage.removeItem('zettSession');
-        
         document.getElementById('login-username').value = ''; 
         document.getElementById('login-password').value = ''; 
         switchView('dashboard');
@@ -797,7 +795,6 @@ function switchView(viewId) {
         if (mainHeader) { mainHeader.style.display = 'none'; }
         if (adminArea) { adminArea.style.display = 'none'; }
         
-        // ZETTBOT FIX: Sidebar tetap muncul di Desktop saat mode Kasir
         if (window.innerWidth < 768) {
             if (sidebar) { sidebar.style.display = 'none'; } 
             if (sidebarBackdrop) { sidebarBackdrop.style.display = 'none'; }
