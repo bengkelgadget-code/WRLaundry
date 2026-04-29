@@ -1,4 +1,4 @@
-/**
+    /**
      * ZETTBOT - SCRIPT ADMIN
      * Berisi Logika Dashboard, Generator View Dinamis, dan Operasi CRUD Master Data
      */
@@ -49,7 +49,11 @@
             
             modalsHtml += '<div id="' + modalId + '" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[55] hidden items-center justify-center p-4"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden relative modal-enter"><button type="button" onclick="closeModal(\'' + modalId + '\')" class="absolute top-4 right-4 w-8 h-8 bg-slate-100 text-slate-500 rounded-full flex items-center justify-center hover:bg-red-100 hover:text-red-600 transition-colors z-10"><i class="ph-bold ph-x"></i></button><div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 shrink-0"><h3 class="text-lg font-extrabold text-slate-800">Tambah Data ' + config.title + '</h3></div><div class="p-6"><form onsubmit="handleFormSubmit(event, \'' + sheetName + '\', \'' + modalId + '\')">' + formFields + '<div class="mt-6 flex justify-end"><button type="submit" class="bg-gradient-to-r from-teal-400 to-teal-500 hover:from-teal-500 hover:to-teal-600 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg shadow-teal-500/30 transition-all flex items-center w-full sm:w-auto justify-center"><i class="ph-bold ph-floppy-disk mr-2"></i> Simpan Data</button></div></form></div></div></div>';
         }
-        container.innerHTML = viewsHtml; modalContainer.innerHTML = modalsHtml;
+
+        // ZETTBOT FIX: TAMBAHAN MODAL HISTORY PELANGGAN
+        var historyModalHtml = '<div id="modal-history-pelanggan" style="z-index: 10000;" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4"><div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg flex flex-col relative modal-enter overflow-hidden max-h-[90vh]"><div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white z-20 shrink-0"><h3 class="text-lg font-black text-slate-800 tracking-tight flex items-center truncate"><i class="ph-bold ph-clock-counter-clockwise mr-2 text-teal-600"></i> History: <span id="history-cust-name" class="ml-2 text-teal-600 truncate max-w-[150px]"></span></h3><button type="button" onclick="closeModal(\'modal-history-pelanggan\')" class="w-8 h-8 bg-slate-100 text-slate-500 rounded-full flex items-center justify-center hover:bg-red-100 hover:text-red-600 transition-colors shrink-0"><i class="ph-bold ph-x"></i></button></div><div class="p-4 bg-slate-50 border-b border-slate-100 flex gap-2 z-10 shrink-0"><select id="filter-history-type" onchange="renderHistoryPelanggan()" class="w-1/2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-teal-300"><option value="all">Semua Waktu</option><option value="month">Per Bulan</option><option value="date">Per Tanggal</option></select><input type="month" id="filter-history-month" onchange="renderHistoryPelanggan()" class="hidden w-1/2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-teal-300"><input type="date" id="filter-history-date" onchange="renderHistoryPelanggan()" class="hidden w-1/2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-teal-300"></div><div class="overflow-y-auto flex-1 p-4 bg-slate-50 w-full relative" id="history-list-container"></div><div class="p-4 bg-white border-t border-slate-100 shrink-0 grid grid-cols-3 gap-2 text-center shadow-[0_-5px_15px_rgba(0,0,0,0.02)] z-20"><div class="bg-slate-50 rounded-xl p-2 border border-slate-100"><p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Berat Kiloan</p><p class="text-sm font-black text-slate-800" id="history-total-kg">0 Kg</p></div><div class="bg-slate-50 rounded-xl p-2 border border-slate-100"><p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Satuan</p><p class="text-sm font-black text-slate-800" id="history-total-pcs">0 Pcs</p></div><div class="bg-teal-50 rounded-xl p-2 border border-teal-100"><p class="text-[9px] font-black text-teal-500 uppercase tracking-widest mb-0.5">Total Biaya</p><p class="text-sm font-black text-teal-700 truncate" id="history-total-rp">Rp 0</p></div></div></div></div>';
+        
+        container.innerHTML = viewsHtml; modalContainer.innerHTML = modalsHtml + historyModalHtml;
     }
 
     function renderAllTables() { 
@@ -231,7 +235,13 @@
         else { google.script.run.withSuccessHandler(successHandler).withFailureHandler(errorHandler).saveRecord(sheetName, recordObj); }
     }
 
+    // ZETTBOT FIX: Custom View Record Route
     function viewRecord(sheetName, id) {
+        if (sheetName === 'Pelanggan') {
+            openHistoryPelanggan(id);
+            return;
+        }
+
         editRecord(sheetName, id);
         setTimeout(function() {
             var modalId = sheetName === 'Produksi' ? 'modal-produksi' : 'modal-' + masterConfig[sheetName].id;
@@ -353,4 +363,126 @@
             ['select-LayananKiloan-JenisWaktu', 'select-LayananSatuan-JenisWaktu'].forEach(function(id) { var el = document.getElementById(id); if(!el) return; if(tsInstances[id]) { tsInstances[id].destroy(); } el.innerHTML = dbWaktuOptions; tsInstances[id] = new TomSelect(el, { create: false, placeholder: "🔍 Cari Waktu Layanan...", selectOnTab: true, openOnFocus: false, shouldLoad: function(query) { return query.length > 0; }, onKeyDown: commonOnKeyDown }); });
             var elRole = document.getElementById('select-Users-Role'); if(elRole) { if(tsInstances['select-Users-Role']) { tsInstances['select-Users-Role'].destroy(); } tsInstances['select-Users-Role'] = new TomSelect(elRole, { create: false, selectOnTab: true, openOnFocus: false, shouldLoad: function(query) { return query.length > 0; }, onKeyDown: commonOnKeyDown }); }
         } catch(e) {}
+    }
+
+    // =====================================================================
+    // ZETTBOT PRO: LOGIKA HISTORY PELANGGAN
+    // =====================================================================
+    var currentHistoryCustId = null;
+
+    function openHistoryPelanggan(id) {
+        currentHistoryCustId = id;
+        var cust = (appData.pelanggan || []).find(function(c) { return String(c['ID']) === String(id); });
+        if (!cust) { showToast('Pelanggan tidak ditemukan', 'error'); return; }
+        
+        document.getElementById('history-cust-name').innerText = cust['Nama Pelanggan'];
+        
+        document.getElementById('filter-history-type').value = 'all';
+        document.getElementById('filter-history-month').value = '';
+        document.getElementById('filter-history-date').value = '';
+        document.getElementById('filter-history-month').classList.add('hidden');
+        document.getElementById('filter-history-date').classList.add('hidden');
+        
+        renderHistoryPelanggan();
+        
+        var modal = document.getElementById('modal-history-pelanggan');
+        if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+    }
+
+    function renderHistoryPelanggan() {
+        if (!currentHistoryCustId) return;
+        
+        var filterType = document.getElementById('filter-history-type').value;
+        var filterMonth = document.getElementById('filter-history-month').value; 
+        var filterDate = document.getElementById('filter-history-date').value; 
+        
+        if (filterType === 'month') {
+            document.getElementById('filter-history-month').classList.remove('hidden');
+            document.getElementById('filter-history-date').classList.add('hidden');
+            if(!filterMonth) {
+                var d = new Date(); var m = '' + (d.getMonth() + 1); var y = d.getFullYear();
+                if(m.length<2) m='0'+m;
+                document.getElementById('filter-history-month').value = y+'-'+m;
+                filterMonth = y+'-'+m;
+            }
+        } else if (filterType === 'date') {
+            document.getElementById('filter-history-month').classList.add('hidden');
+            document.getElementById('filter-history-date').classList.remove('hidden');
+            if(!filterDate) {
+                var d = new Date(); var m = '' + (d.getMonth() + 1); var dy = '' + d.getDate(); var y = d.getFullYear();
+                if(m.length<2) m='0'+m; if(dy.length<2) dy='0'+dy;
+                document.getElementById('filter-history-date').value = y+'-'+m+'-'+dy;
+                filterDate = y+'-'+m+'-'+dy;
+            }
+        } else {
+            document.getElementById('filter-history-month').classList.add('hidden');
+            document.getElementById('filter-history-date').classList.add('hidden');
+        }
+
+        var txData = (appData.produksi || []).filter(function(tx) { return String(tx['ID Pelanggan']) === String(currentHistoryCustId); });
+        
+        var filteredTx = txData.filter(function(tx) {
+            var wktMasuk = tx['Waktu Masuk'] ? String(tx['Waktu Masuk']) : ''; 
+            var parts = wktMasuk.split(' ')[0].split('/'); 
+            if (parts.length !== 3) return false;
+            
+            var txDD = parts[0].padStart(2, '0');
+            var txMM = parts[1].padStart(2, '0');
+            var txYYYY = parts[2];
+            
+            if (filterType === 'month' && filterMonth) {
+                var fParts = filterMonth.split('-');
+                return (fParts[0] === txYYYY && fParts[1] === txMM);
+            } else if (filterType === 'date' && filterDate) {
+                var fParts = filterDate.split('-');
+                return (fParts[0] === txYYYY && fParts[1] === txMM && fParts[2] === txDD);
+            }
+            return true; 
+        });
+        
+        var totalKg = 0;
+        var totalPcs = 0;
+        var totalRp = 0;
+        
+        var html = '';
+        
+        if (filteredTx.length === 0) {
+            html = '<div class="flex flex-col items-center justify-center py-12 opacity-50"><i class="ph-duotone ph-receipt text-6xl mb-3 text-slate-400"></i><p class="text-sm font-bold text-slate-500">Tidak ada transaksi ditemukan.</p></div>';
+        } else {
+            filteredTx.reverse().forEach(function(tx) {
+                totalRp += Number(tx['Total Harga']) || 0;
+                
+                var items = [];
+                try { 
+                    var parsed = JSON.parse(tx['Detail Layanan JSON'] || '{}'); 
+                    items = Array.isArray(parsed) ? parsed : (parsed.items || []); 
+                } catch(e) {}
+                
+                items.forEach(function(item) {
+                    if (item.satuan === 'Kg') totalKg += Number(item.qty) || 0;
+                    else if (item.satuan === 'Pcs') totalPcs += Number(item.qty) || 0;
+                });
+                
+                var sBg = ''; if (tx['Status'] === 'Proses') sBg = 'bg-amber-100 text-amber-700 border border-amber-200'; else if (tx['Status'] === 'Selesai') sBg = 'bg-emerald-100 text-emerald-700 border border-emerald-200'; else sBg = 'bg-blue-100 text-blue-700 border border-blue-200';
+                
+                var pmbStatusVal = tx['Pembayaran'] || 'Belum Lunas';
+                var pBg = ''; if (pmbStatusVal === 'Lunas') pBg = 'bg-emerald-50 text-emerald-600 border border-emerald-200'; else if (pmbStatusVal === 'DP') pBg = 'bg-amber-50 text-amber-600 border border-amber-200'; else if (pmbStatusVal === 'Potong Kuota') pBg = 'bg-indigo-50 text-indigo-600 border border-indigo-200'; else pBg = 'bg-red-50 text-red-500 border border-red-200';
+                
+                var layananStr = resolveLayananNameForProduksi(tx['Layanan']).replace(/\+/g, ', ');
+                var notaStr = tx['No Nota'] || tx['ID'];
+                var dateStr = tx['Waktu Masuk'] ? String(tx['Waktu Masuk']).split(' ')[0] : '-';
+                
+                html += '<div class="bg-white p-3 border border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-100 hover:border-teal-300 transition-all mb-3 shadow-sm active:scale-95 group" onclick="viewProduksiDetail(\'' + tx['ID'] + '\')">';
+                html += '<div class="flex justify-between items-center mb-1.5"><span class="text-[10px] font-bold text-slate-500 font-mono tracking-widest">' + notaStr + '</span><span class="text-[10px] font-bold text-slate-400 group-hover:text-teal-600 transition-colors"><i class="ph-bold ph-calendar-blank mr-1"></i>' + dateStr + '</span></div>';
+                html += '<div class="flex justify-between items-start mb-2"><p class="text-[12px] font-bold text-slate-700 leading-snug w-2/3 pr-2 truncate">' + layananStr + '</p><p class="text-[13px] font-black text-slate-800 whitespace-nowrap w-1/3 text-right">Rp ' + Number(tx['Total Harga'] || 0).toLocaleString('id-ID') + '</p></div>';
+                html += '<div class="flex justify-between items-center"><div class="flex gap-1.5 items-center"><span class="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wide ' + pBg + '">' + pmbStatusVal + '</span><span class="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wide ' + sBg + '">' + tx['Status'] + '</span></div><i class="ph-bold ph-caret-right text-slate-300 group-hover:text-teal-500 transition-colors"></i></div>';
+                html += '</div>';
+            });
+        }
+        
+        document.getElementById('history-list-container').innerHTML = html;
+        
+        document.getElementById('history-total-kg').innerText = (Math.round(totalKg * 100) / 100) + ' Kg';
+        document.getElementById('history-total-pcs').innerText = totalPcs + ' Pcs';
+        document.getElementById('history-total-rp').innerText = 'Rp ' + totalRp.toLocaleString('id-ID');
     }
