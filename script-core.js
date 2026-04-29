@@ -672,9 +672,28 @@ function fetchInitialData() {
             
             showLoading(false);
             
+            // ZETTBOT FIX: Auto-Login dengan mengecek sesi di memori Browser
+            var savedSession = localStorage.getItem('zettSession');
+            if (savedSession && !isLoggedIn) {
+                try {
+                    var parsedUser = JSON.parse(savedSession);
+                    var validUser = appData.users.find(function(u) { return String(u.Username).trim() === String(parsedUser.Username).trim() && String(u.Password) === String(parsedUser.Password); });
+                    if (validUser) {
+                        executeLogin(validUser);
+                        return; // Berhenti di sini karena UI sudah diurus oleh executeLogin
+                    } else {
+                        localStorage.removeItem('zettSession'); // Hapus jika user sudah tidak valid (misal: dihapus admin)
+                    }
+                } catch(e) {}
+            }
+
+            // Update layar jika login biasa
             if (isLoggedIn) {
-                if (currentUser && currentUser.Role === 'ADMIN') { updateDashboard(); renderAllTables(); }
-                updateAllDropdowns();
+                if (currentUser && currentUser.Role === 'ADMIN') { 
+                    if(typeof updateDashboard === 'function') updateDashboard(); 
+                    if(typeof renderAllTables === 'function') renderAllTables(); 
+                }
+                if(typeof updateAllDropdowns === 'function') updateAllDropdowns();
                 if (typeof renderStaffTable === 'function') renderStaffTable(true);
             }
         }).withFailureHandler(function(error) { showLoading(false); showToast("Koneksi Database Gagal", "error"); }).getInitialData();
@@ -690,6 +709,10 @@ function handleLogin(e) {
 
 function executeLogin(user) {
     isLoggedIn = true; currentUser = user; renderSidebarMenu();
+    
+    // ZETTBOT FIX: Simpan identitas ke memori browser agar tidak hilang saat direfresh
+    localStorage.setItem('zettSession', JSON.stringify(user));
+    
     var btnBackAdmin = document.getElementById('btn-back-admin');
     if(btnBackAdmin) { if(user.Role === 'ADMIN') { btnBackAdmin.classList.remove('hidden'); } else { btnBackAdmin.classList.add('hidden'); } }
     var overlay = document.getElementById('login-overlay');
@@ -697,13 +720,17 @@ function executeLogin(user) {
     if(document.getElementById('user-profile-name')) { document.getElementById('user-profile-name').innerText = user['Nama Lengkap'] || 'Staff'; }
     if(document.getElementById('user-profile-role')) { document.getElementById('user-profile-role').innerText = 'ROLE: ' + (user['Role'] || 'STAFF'); }
     if(document.getElementById('user-profile-avatar')) { document.getElementById('user-profile-avatar').innerText = (user['Nama Lengkap'] || 'S').charAt(0); }
-    if(user.Role === 'ADMIN') { updateDashboard(); renderAllTables(); }
-    updateAllDropdowns(); 
+    
+    if(user.Role === 'ADMIN') { 
+        if(typeof updateDashboard === 'function') updateDashboard(); 
+        if(typeof renderAllTables === 'function') renderAllTables(); 
+    }
+    if(typeof updateAllDropdowns === 'function') updateAllDropdowns(); 
     
     if (typeof renderStaffTable === 'function') { 
-        renderStaffTable(); 
+        renderStaffTable(true); 
     } else { 
-        console.warn("ZettBOT Warning: renderStaffTable tidak ditemukan. Cek isi file script-pos.js Anda!"); 
+        console.warn("ZettBOT Warning: renderStaffTable tidak ditemukan."); 
     }
     
     if(user.Role === 'STAFF') { switchView('staff'); } 
@@ -741,6 +768,10 @@ function renderSidebarMenu() {
 function logout() {
     zettConfirm("Konfirmasi Keluar", "Apakah Anda yakin ingin keluar dari sistem?", "info", function() {
         isLoggedIn = false; currentUser = null; 
+        
+        // ZETTBOT FIX: Hapus memori browser jika benar-benar klik Logout
+        localStorage.removeItem('zettSession');
+        
         document.getElementById('login-username').value = ''; 
         document.getElementById('login-password').value = ''; 
         switchView('dashboard');
