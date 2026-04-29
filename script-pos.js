@@ -88,7 +88,7 @@
                     var rYYYY = rParts[2];
                     var normalizedRowDate = rDD + '/' + rMM + '/' + rYYYY;
                     
-                    var fParts = formattedDateFilter.split('/');
+                    var fParts = formattedDateFilter.split('-');
                     var normalizedFilterDate = fParts[0].padStart(2, '0') + '/' + fParts[1].padStart(2, '0') + '/' + fParts[2];
                     
                     matchDate = (normalizedRowDate === normalizedFilterDate);
@@ -1109,7 +1109,10 @@
         if (viewId === 'staff') { 
             if (mainHeader) mainHeader.style.display = 'none'; 
             if (adminScrollArea) adminScrollArea.style.display = 'none';
-            if (window.innerWidth < 768) {
+            
+            // LOGIKA RULE STAFF: Selalu sembunyikan sidebar di semua device
+            var isStaffRole = (currentUser && currentUser.Role === 'STAFF');
+            if (window.innerWidth < 768 || isStaffRole) {
                 if (sidebar) sidebar.style.display = 'none'; 
                 if (sidebarBackdrop) sidebarBackdrop.style.display = 'none';
             } else {
@@ -1214,7 +1217,10 @@
         if (viewStaff && !viewStaff.classList.contains('hidden')) {
             var sidebar = document.getElementById('sidebar');
             var sidebarBackdrop = document.getElementById('sidebar-backdrop');
-            if (window.innerWidth < 768) {
+            
+            var isStaffRole = (currentUser && currentUser.Role === 'STAFF');
+            
+            if (window.innerWidth < 768 || isStaffRole) {
                 if (sidebar) sidebar.style.display = 'none';
                 if (sidebarBackdrop) sidebarBackdrop.style.display = 'none';
             } else {
