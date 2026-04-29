@@ -1,4 +1,4 @@
-    /**
+/**
      * ZETTBOT - SCRIPT POS & TRANSAKSI
      * Berisi Logika Kasir, Form Transaksi Dinamis, Generator Struk Thermal, dan Cetak Bluetooth/WA
      */
