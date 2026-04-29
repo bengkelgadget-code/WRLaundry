@@ -105,10 +105,20 @@ if (typeof google === 'undefined') {
                     saveRecord: function(sheet, data) {
                         let key = sheet.toLowerCase().replace('layanan', '');
                         if (!appData[key]) appData[key] = [];
-                        let prefix = sheet.substring(0, 3).toUpperCase();
                         
-                        // Buat ID sementara untuk respon layar instan
-                        data['ID'] = prefix + '-TMP-' + Math.floor(Math.random() * 1000);
+                        // ZETTBOT FIX: Generate ID Aktual Secara Lokal (Menghapus masalah PEL-TMP mismatch)
+                        let prefixMap = { 'Pelanggan': 'PLG', 'LayananWaktu': 'LWT', 'LayananKiloan': 'LKL', 'LayananSatuan': 'LST', 'LayananPewangi': 'LPW', 'LayananMember': 'LMB', 'Users': 'USR' };
+                        let prefix = prefixMap[sheet] || sheet.substring(0, 3).toUpperCase();
+                        let maxNum = 0;
+                        appData[key].forEach(r => {
+                            let idStr = String(r.ID || '');
+                            if (idStr.startsWith(prefix + '-')) {
+                                let num = parseInt(idStr.split('-')[1]);
+                                if (!isNaN(num) && num > maxNum) maxNum = num;
+                            }
+                        });
+                        data['ID'] = prefix + '-' + String(maxNum + 1).padStart(4, '0');
+                        
                         appData[key].push(data);
                         
                         if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
@@ -118,12 +128,10 @@ if (typeof google === 'undefined') {
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
                         .then(res => res.json()).then(resData => {
                             if (resData.success && resData.data) {
-                                // Ganti data sementara dengan data resmi (ID Permanen)
                                 appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
                                 if(resData.pelanggan) appData.pelanggan = cleanPhoneQuotes(resData.pelanggan);
                                 if(database) database.ref('appData').set(sanitizeFbKeys(appData));
                                 
-                                // REFRESH LAYAR DIAM-DIAM: Menyulap ID TMP di layar menjadi ID Permanen tanpa perlu reload web
                                 if(typeof window.renderTable === 'function') window.renderTable(sheet, true);
                                 if(typeof window.updateAllDropdowns === 'function') window.updateAllDropdowns();
                             }
@@ -179,19 +187,63 @@ if (typeof google === 'undefined') {
                     saveTransaksiStaff: function(p1, p2) {
                         let payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
                         let rec = payload.recordObj || payload;
+                        
                         if (!rec['ID']) {
                             let maxNum = 0;
-                            (appData.produksi || []).forEach(r => { let id = String(r.ID || ''); if(id.startsWith('TX-')) { let num = parseInt(id.split('-')[1]); if(!isNaN(num) && num > maxNum) maxNum = num; } });
+                            (appData.produksi || []).forEach(r => { 
+                                let idStr = String(r.ID || ''); 
+                                if(idStr.startsWith('TX-')) { 
+                                    let num = parseInt(idStr.split('-')[1]); 
+                                    if(!isNaN(num) && num > maxNum) maxNum = num; 
+                                } 
+                            });
                             rec['ID'] = 'TX-' + String(maxNum + 1).padStart(4, '0');
                         }
-                        if (!rec['Waktu Masuk']) rec['Waktu Masuk'] = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
+
+                        // ZETTBOT FIX: Menginjeksi Data Pelanggan & Nota secara lokal untuk mengatasi "UNDEFINED" di form UI
+                        if (!rec['ID Pelanggan']) {
+                            let cust = (appData.pelanggan || []).find(p => p['Nama Pelanggan'] === rec['Nama Pelanggan']);
+                            if (cust) rec['ID Pelanggan'] = cust['ID'];
+                        }
+                        
+                        if (!rec['No Nota']) {
+                            let maxNota = 0; 
+                            let d = new Date(); 
+                            let day = ('0' + d.getDate()).slice(-2); 
+                            let month = ('0' + (d.getMonth() + 1)).slice(-2); 
+                            let year = String(d.getFullYear()).slice(-2); 
+                            let notaPrefix = 'WRL.' + day + month + year + '.';
+                            (appData.produksi||[]).forEach(function(row) { 
+                                if(row['No Nota'] && String(row['No Nota']).startsWith(notaPrefix)) { 
+                                    let parts = String(row['No Nota']).split('.'); 
+                                    if (parts.length > 2) { 
+                                        let n = parseInt(parts[2]); 
+                                        if(!isNaN(n) && n > maxNota) maxNota = n; 
+                                    } 
+                                } 
+                            });
+                            rec['No Nota'] = notaPrefix + String(maxNota+1).padStart(3,'0');
+                        }
+                        
+                        if (!rec['Status']) {
+                            rec['Status'] = 'Proses';
+                        }
+                        // END ZETTBOT FIX
+
+                        if (!rec['Waktu Masuk']) {
+                            rec['Waktu Masuk'] = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
+                        }
+                        
                         if (rec['Pembayaran'] === 'Potong Kuota' && rec['Kg Terpakai']) {
                             let cust = appData.pelanggan.find(p => p['Nama Pelanggan'] === rec['Nama Pelanggan']);
                             if (cust) { let sisa = parseFloat(cust['Sisa Kuota (Kg)']) - parseFloat(rec['Kg Terpakai']); cust['Sisa Kuota (Kg)'] = sisa < 0 ? 0 : Math.round(sisa * 100) / 100; }
                         }
+                        
                         let exists = appData.produksi.findIndex(x => x.ID === rec.ID);
                         if (exists >= 0) appData.produksi[exists] = rec; else appData.produksi.push(rec);
+                        
                         if(database) database.ref('appData').set(sanitizeFbKeys(appData));
+                        
                         if (this._onSuccess) this._onSuccess({ success: true, message: "Transaksi Tersimpan Cepat!", data: appData.produksi, pelanggan: appData.pelanggan, notaInfo: rec });
                         
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload }) })
