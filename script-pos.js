@@ -355,7 +355,6 @@ function initCustomerAutocomplete() {
     });
 }
 
-// ZETTBOT FIX: Helper untuk memaksa area pembayaran ditarik ke atas layar di atas keyboard HP
 function attachPaymentScroll(inputId) {
     var el = document.getElementById(inputId);
     if (el) {
@@ -371,7 +370,7 @@ function attachPaymentScroll(inputId) {
                         behavior: 'smooth'
                     });
                 };
-                setTimeout(executeScroll, 260); // Menimpa scroll default ZettBridge
+                setTimeout(executeScroll, 260); 
                 setTimeout(executeScroll, 610);
             }
         };
@@ -392,7 +391,6 @@ function openStaffModal() {
     (appData.produksi||[]).forEach(function(row) { if(row['No Nota'] && row['No Nota'].startsWith(prefix)) { var parts = row['No Nota'].split('.'); if (parts.length > 2) { var n = parseInt(parts[2]); if(!isNaN(n) && n > maxNum) maxNum = n; } } });
     var notaInput = document.getElementById('staff-input-nota'); if (notaInput) { notaInput.value = prefix + String(maxNum+1).padStart(3,'0'); }
     
-    // ZETTBOT FIX: Terapkan helper scroll ke area diskon dan pembayaran
     attachPaymentScroll('staff-input-diskon');
     attachPaymentScroll('staff-input-pembayaran');
     attachPaymentScroll('staff-input-dp');
@@ -486,7 +484,6 @@ function addStaffServiceRow(autoFocus) {
                 }
             },
             
-            // ZETTBOT FIX: Auto-focus ke input Qty secara otomatis setelah memilih (Tap/Sentuh di HP)
             onChange: function(val) { 
                 handleStaffServiceSelect(rowId, val); 
                 validateStaffForm(); 
@@ -1181,3 +1178,33 @@ document.addEventListener('touchend', e => {
         fetchInitialData();
     }
 });
+
+// ZETTBOT PRO FIX: Mengangkat Footer "SIMPAN" ke Atas Virtual Keyboard HP
+if (window.visualViewport) {
+    const viewportHandler = function() {
+        var footer = document.getElementById('staff-footer-action');
+        var modalTx = document.getElementById('modal-staff-tx');
+        var scrollArea = document.getElementById('staff-modal-scroll-area');
+        
+        if (footer && modalTx && !modalTx.classList.contains('hidden')) {
+            var modalRect = modalTx.getBoundingClientRect();
+            var vvHeight = window.visualViewport.height;
+            // Menghitung berapa pixel layar kita yang tertutup keyboard
+            var offset = modalRect.height - vvHeight;
+            
+            if (offset > 50) {
+                // Keyboard muncul! Angkat footer ke atas sejauh tinggi keyboard
+                footer.style.bottom = offset + 'px';
+                // Beri ruang lega di bawah konten agar area Diskon tidak tertutup footer
+                if (scrollArea) scrollArea.style.paddingBottom = (offset + 120) + 'px';
+            } else {
+                // Keyboard turun! Kembalikan footer ke paling bawah
+                footer.style.bottom = '0px';
+                if (scrollArea) scrollArea.style.paddingBottom = ''; // Kembali ke padding bawaan CSS
+            }
+        }
+    };
+    
+    window.visualViewport.addEventListener('resize', viewportHandler);
+    window.visualViewport.addEventListener('scroll', viewportHandler);
+}
