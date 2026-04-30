@@ -595,9 +595,18 @@ function previewFileName(input) {
 
 function validateStaffForm() {
     var footer = document.getElementById('staff-footer-action');
+    var form = document.getElementById('form-staff-tx');
     if(footer) { 
         footer.classList.remove('hidden'); 
         footer.classList.add('flex'); 
+        
+        if (form && footer.parentNode !== form) {
+            footer.classList.remove('absolute', 'bottom-0', 'left-0', 'fixed');
+            footer.classList.add('relative', 'rounded-2xl', 'mt-4', 'mb-6', 'border', 'border-slate-200', 'bg-white');
+            footer.style.boxShadow = '0 -4px 15px rgba(0,0,0,0.03)';
+            form.appendChild(footer);
+            form.classList.remove('pb-12'); 
+        }
     }
 }
 
@@ -713,11 +722,11 @@ function execSaveStaff(recordObj, fileData, btn) {
     if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
     if(String(recordObj['No Telpon']).startsWith("'")) { recordObj['No Telpon'] = recordObj['No Telpon'].substring(1); }
 
-    // Optimistic UI Update Memory Lokal
-    var existsIdx = appData.produksi.findIndex(function(tx) { return tx['ID'] === recordObj['ID']; });
+    // ZETTBOT ANTI-GHOST ROLLBACK: Optimistic UI Update Memory Lokal
+    var existsIdx = appData.produksi.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
     if (existsIdx >= 0) { appData.produksi[existsIdx] = recordObj; } else { appData.produksi.push(recordObj); }
 
-    // Pemotongan Kuota Optimistic di Layar Kasir
+    // ZETTBOT ANTI-GHOST ROLLBACK: Pemotongan Kuota Optimistic di Layar Kasir
     if (recordObj['Pembayaran'] === 'Potong Kuota' && recordObj['Kg Terpakai']) {
         var custIdx = appData.pelanggan.findIndex(p => p['Nama Pelanggan'] === recordObj['Nama Pelanggan']);
         if (custIdx >= 0) {
@@ -741,13 +750,37 @@ function execSaveStaff(recordObj, fileData, btn) {
     document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx);
     showSuccessModal();
 
-    // Server Truth Reconciliation: Memastikan sinkronisasi latar belakang berhasil
+    // ZETTBOT ANTI-GHOST ROLLBACK: Server Truth Reconciliation
     if (typeof google !== 'undefined' && google.script) {
         google.script.run
             .withSuccessHandler(function(res) {
                 if (res && res.success) {
-                    if (res.data) appData.produksi = typeof mergeProduksiData === 'function' ? mergeProduksiData(res.data) : res.data;
-                    if (res.pelanggan) appData.pelanggan = typeof cleanPhoneQuotes === 'function' ? cleanPhoneQuotes(res.pelanggan) : res.pelanggan;
+                    if (res.data) {
+                        let freshProd = typeof mergeProduksiData === 'function' ? mergeProduksiData(res.data) : res.data;
+                        let srvIdx = freshProd.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
+                        
+                        // Injeksi kembali secara manual jika Google Sheets lambat memperbarui respons
+                        if (srvIdx === -1) {
+                            freshProd.push(recordObj);
+                        } else {
+                            freshProd[srvIdx] = recordObj;
+                        }
+                        appData.produksi = freshProd;
+                    }
+                    
+                    if (res.pelanggan) {
+                        let freshPlg = typeof cleanPhoneQuotes === 'function' ? cleanPhoneQuotes(res.pelanggan) : res.pelanggan;
+                        let pLocalIdx = appData.pelanggan.findIndex(p => p['Nama Pelanggan'] === recordObj['Nama Pelanggan']);
+                        let pSrvIdx = freshPlg.findIndex(p => p['Nama Pelanggan'] === recordObj['Nama Pelanggan']);
+                        
+                        // Pertahankan sisa kuota yang terpotong jika Server lag
+                        if (recordObj['Pembayaran'] === 'Potong Kuota' && pLocalIdx >= 0 && pSrvIdx >= 0) {
+                            if (parseFloat(freshPlg[pSrvIdx]['Sisa Kuota (Kg)']) > parseFloat(appData.pelanggan[pLocalIdx]['Sisa Kuota (Kg)'])) {
+                                freshPlg[pSrvIdx]['Sisa Kuota (Kg)'] = appData.pelanggan[pLocalIdx]['Sisa Kuota (Kg)'];
+                            }
+                        }
+                        appData.pelanggan = freshPlg;
+                    }
 
                     if (typeof database !== 'undefined' && database) {
                         database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
@@ -803,7 +836,6 @@ function saveTxDetailStatus() {
             if (newPembayaran === 'Lunas') appData.produksi[idx]['Sisa Bayar'] = 0;
         }
 
-        // Sinkronisasi Firebase Lintas Perangkat Instan
         if (typeof database !== 'undefined' && database) {
             database.ref('appData/produksi').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.produksi) : appData.produksi);
         }
@@ -825,7 +857,16 @@ function saveTxDetailStatus() {
                 closeModal('modal-tx-detail'); document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx); showSuccessModal();
 
                 if (res.data) {
-                    appData.produksi = typeof mergeProduksiData === 'function' ? mergeProduksiData(res.data) : res.data;
+                    let freshProd = typeof mergeProduksiData === 'function' ? mergeProduksiData(res.data) : res.data;
+                    // ZETTBOT ANTI-GHOST ROLLBACK
+                    var srvIdx = freshProd.findIndex(x => String(x.ID) === String(currentDetailId));
+                    if(srvIdx >= 0) {
+                        freshProd[srvIdx]['Status'] = newStatus;
+                        freshProd[srvIdx]['Pembayaran'] = newPembayaran;
+                        if (newPembayaran === 'Lunas') freshProd[srvIdx]['Sisa Bayar'] = 0;
+                    }
+                    appData.produksi = freshProd;
+
                     if (typeof database !== 'undefined' && database) {
                         database.ref('appData/produksi').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.produksi) : appData.produksi);
                     }
