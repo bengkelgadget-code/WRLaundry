@@ -1,4 +1,3 @@
-
 // ZETTBOT HYBRID ENGINE: Auto-Switch Backend & Firebase RTDB
 // ====================================================================
 // PERHATIAN: Masukkan URL Web App (hasil deploy GAS terbaru) Anda di sini!
@@ -514,7 +513,6 @@ function generatePaginationHTML(view, totalItems) {
     return html;
 }
 
-// MODAL CONTROLS & AUTO-FOCUS
 function openModal(modalId) {
     isFormPopulating = true; isEditMode = false; currentEditId = null; 
     var modal = document.getElementById(modalId);
@@ -549,7 +547,6 @@ function closeModal(modalId) {
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); } 
 }
 
-// SETTINGS
 function applySettings() {
     var loginTitle = document.getElementById('ui-login-title'); var sidebarTitle = document.getElementById('ui-sidebar-title'); var staffTitle = document.getElementById('ui-staff-title');
     if(loginTitle) loginTitle.innerText = appSettings.nama; 
@@ -618,7 +615,6 @@ function saveSettings() {
     localStorage.setItem('zettSettings', JSON.stringify(appSettings)); closeModal('modal-settings'); applySettings(); showToast('Pengaturan berhasil disimpan!');
 }
 
-// INITIALIZATION & RENDER
 document.addEventListener('DOMContentLoaded', function() {
     applySettings(); 
     
@@ -658,13 +654,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }, true);
     }
 
-    // 🚀 ZETTBOT REALTIME SYNC ENGINE: Listener Global untuk 0-Delay Multi-Device
     if (typeof database !== 'undefined' && database) {
         let isFirstRealtimeFire = true;
         database.ref('appData').on('value', function(snapshot) {
             if (isFirstRealtimeFire) {
                 isFirstRealtimeFire = false;
-                return; // Skip fire pertama (sudah ditangani oleh fetchInitialData)
+                return;
             }
             if (snapshot.exists() && snapshot.val().produksi) {
                 console.log("⚡ [ZettBridge] Realtime Update Diterima dari Cloud!");
@@ -674,10 +669,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     newData.pelanggan = cleanPhoneQuotes(newData.pelanggan);
                 }
                 
-                appData = newData; // Sinkronisasi memori lokal seketika
+                appData = newData;
                 
                 if (isLoggedIn) {
-                    // Update tampilan kasir tanpa mengganggu field inputan yang sedang aktif
                     if (typeof renderStaffTable === 'function') renderStaffTable(true);
                     
                     if (currentUser && currentUser.Role === 'ADMIN') {
@@ -754,7 +748,6 @@ function fetchInitialData() {
     } else { setTimeout(function() { showLoading(false); }, 500); }
 }
 
-// NAVIGATION & AUTH
 function handleLogin(e) {
     e.preventDefault(); var u = document.getElementById('login-username').value.trim(); var p = document.getElementById('login-password').value;
     var user = (appData.users || []).find(function(x) { return String(x.Username).trim() === u && String(x.Password) === p; });
@@ -889,16 +882,23 @@ function toggleSidebar() {
     } 
 }
 
+// ZETTBOT FIX: Hindari Error "InvalidStateError" di Input File!
 // GLOBAL INPUT UPPERCASE (Bypass Login/Users)
 document.addEventListener('input', e => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        // ZETTBOT FIX: Abaikan input file, password, email, dan number agar tidak menyebabkan exception
+        if (e.target.type === 'file' || e.target.type === 'password' || e.target.type === 'email' || e.target.type === 'number') return;
+        
         if (e.target.closest('#modal-users') || e.target.closest('#login-overlay')) return;
-        var start = e.target.selectionStart;
+        
         var oldVal = e.target.value;
         var newVal = oldVal.toUpperCase();
+        
         if (oldVal !== newVal) {
+            var start = e.target.selectionStart;
             e.target.value = newVal;
-            e.target.setSelectionRange(start, start);
+            // Cegah error cursor-jump
+            try { e.target.setSelectionRange(start, start); } catch(err) {} 
         }
     }
 });
