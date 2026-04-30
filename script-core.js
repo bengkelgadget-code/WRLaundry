@@ -1,3 +1,4 @@
+
 // ZETTBOT HYBRID ENGINE: Auto-Switch Backend & Firebase RTDB
 // ====================================================================
 // PERHATIAN: Masukkan URL Web App (hasil deploy GAS terbaru) Anda di sini!
@@ -312,6 +313,7 @@ if (typeof google === 'undefined') {
 
 /**
  * ZETTBOT - SCRIPT CORE
+ * Berisi Variabel Global, Utilitas, Navigasi, dan Inisialisasi Sistem
  */
 
 var appData = { produksi: [], pelanggan: [], waktu: [], kiloan: [], satuan: [], pewangi: [], member: [], users: [] };
@@ -630,7 +632,6 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchInitialData();
     makeTextFlexible('dash-pendapatan');
     
-    // ZETTBOT FIX: Auto-Scroll Presisi untuk Mobile. Memposisikan kolom input aktif di atas agar daftar suggest tampil luas
     var modalScrollArea = document.getElementById('staff-modal-scroll-area');
     if (modalScrollArea) {
         modalScrollArea.addEventListener('focus', function(e) {
@@ -638,15 +639,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') {
                 
                 var executeScroll = function() {
-                    // Cari elemen pembungkus (wrapper) terluar yang memiliki label di dalamnya
                     var wrapper = target.closest('.ts-wrapper') ? target.closest('.ts-wrapper').parentElement : (target.closest('[id^="staff-srv-row-"]') || target.closest('.mb-4') || target); 
                     
                     if (wrapper && modalScrollArea) { 
                         var rect = wrapper.getBoundingClientRect();
                         var scrollRect = modalScrollArea.getBoundingClientRect();
                         var currentScroll = modalScrollArea.scrollTop;
-                        
-                        // Kalkulasi akurat: Tarik elemen hingga menyentuh garis atas container (- 10px untuk ruang lega)
                         modalScrollArea.scrollTo({
                             top: currentScroll + (rect.top - scrollRect.top) - 10,
                             behavior: 'smooth'
@@ -654,13 +652,58 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 };
 
-                // ZETTBOT FIX: Tembak auto-scroll 2 kali. 
-                // HP yang berbeda memiliki delay animasi keyboard yang berbeda. 
-                // Menembak 2x menjamin posisi absolut teratas meskipun layar menyusut perlahan.
                 setTimeout(executeScroll, 250); 
                 setTimeout(executeScroll, 600); 
             }
         }, true);
+    }
+
+    // 🚀 ZETTBOT REALTIME SYNC ENGINE: Listener Global untuk 0-Delay Multi-Device
+    if (typeof database !== 'undefined' && database) {
+        let isFirstRealtimeFire = true;
+        database.ref('appData').on('value', function(snapshot) {
+            if (isFirstRealtimeFire) {
+                isFirstRealtimeFire = false;
+                return; // Skip fire pertama (sudah ditangani oleh fetchInitialData)
+            }
+            if (snapshot.exists() && snapshot.val().produksi) {
+                console.log("⚡ [ZettBridge] Realtime Update Diterima dari Cloud!");
+                var newData = window.restoreFbKeys ? window.restoreFbKeys(snapshot.val()) : snapshot.val();
+                
+                if (newData.pelanggan && typeof cleanPhoneQuotes === 'function') {
+                    newData.pelanggan = cleanPhoneQuotes(newData.pelanggan);
+                }
+                
+                appData = newData; // Sinkronisasi memori lokal seketika
+                
+                if (isLoggedIn) {
+                    // Update tampilan kasir tanpa mengganggu field inputan yang sedang aktif
+                    if (typeof renderStaffTable === 'function') renderStaffTable(true);
+                    
+                    if (currentUser && currentUser.Role === 'ADMIN') {
+                        if (typeof updateDashboard === 'function') updateDashboard();
+                        
+                        var activeViews = ['produksi', 'users'];
+                        if (typeof masterConfig !== 'undefined') {
+                            for (var k in masterConfig) { 
+                                if(k !== 'Users') activeViews.push(masterConfig[k].id); 
+                            }
+                        }
+                        
+                        activeViews.forEach(function(vid) {
+                            var el = document.getElementById('view-' + vid);
+                            if (el && !el.classList.contains('hidden') && typeof renderTable === 'function') {
+                                var sheetName = vid === 'produksi' ? 'Produksi' : (vid === 'users' ? 'Users' : null);
+                                if (!sheetName && typeof masterConfig !== 'undefined') {
+                                    for (var key in masterConfig) { if (masterConfig[key].id === vid) { sheetName = key; break; } }
+                                }
+                                if (sheetName) renderTable(sheetName, true);
+                            }
+                        });
+                    }
+                }
+            }
+        });
     }
 });
 
@@ -739,7 +782,7 @@ function executeLogin(user) {
     if (typeof renderStaffTable === 'function') { 
         renderStaffTable(true); 
     } else { 
-        console.warn("ZettBOT Warning: renderStaffTable tidak ditemukan. Cek isi file script-pos.js Anda!"); 
+        console.warn("ZettBOT Warning: renderStaffTable tidak ditemukan."); 
     }
     
     if(user.Role === 'STAFF') { switchView('staff'); } 
@@ -845,3 +888,27 @@ function toggleSidebar() {
         } else { sidebar.classList.toggle('hidden'); } 
     } 
 }
+
+// GLOBAL INPUT UPPERCASE (Bypass Login/Users)
+document.addEventListener('input', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        if (e.target.closest('#modal-users') || e.target.closest('#login-overlay')) return;
+        var start = e.target.selectionStart;
+        var oldVal = e.target.value;
+        var newVal = oldVal.toUpperCase();
+        if (oldVal !== newVal) {
+            e.target.value = newVal;
+            e.target.setSelectionRange(start, start);
+        }
+    }
+});
+
+// PULL TO REFRESH
+var startY = 0;
+document.addEventListener('touchstart', e => { if(window.scrollY < 10) startY = e.touches[0].pageY; });
+document.addEventListener('touchend', e => {
+    if(window.scrollY < 10 && e.changedTouches[0].pageY - startY > 150) {
+        showToast("Menyegarkan data...");
+        fetchInitialData();
+    }
+});
