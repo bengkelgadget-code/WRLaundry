@@ -183,7 +183,7 @@ function initCustomerAutocomplete() {
                     newOpt[!isNama ? 'nama' : 'hp'] = upInput;
                     return newOpt;
                 }, 
-                createOnBlur: true, 
+                createOnBlur: false, // ZETTBOT FIX: Dimatikan agar onBlur kustom kita bekerja sempurna di Android Gboard
                 persist: false, 
                 selectOnTab: true, 
                 openOnFocus: true,
@@ -206,16 +206,29 @@ function initCustomerAutocomplete() {
                     };
                 },
 
+                // ZETTBOT FIX: Menangani Android Gboard yang memaksakan Blur saat user menekan Enter/Selesai di keyboard
+                onBlur: function() {
+                    var currentInput = this.control_input.value.trim().toUpperCase();
+                    if (currentInput && this.items.length === 0) {
+                        var visibleOpts = Array.from(this.dropdown_content.querySelectorAll('.option:not(.create)')).filter(function(el) { return el.style.display !== 'none'; });
+                        if (visibleOpts.length > 0) {
+                            var val = visibleOpts[0].getAttribute('data-value');
+                            if (val) { this.setValue(val); return; }
+                        }
+                        this.createItem(currentInput);
+                    }
+                },
+
                 onKeyDown: function(e) {
-                    if(e.key === 'Tab' || e.key === 'Enter') {
+                    // ZETTBOT FIX: keyCode 13 untuk memastikan Gboard Android tetap terdeteksi
+                    if(e.key === 'Tab' || e.key === 'Enter' || e.keyCode === 13) {
                         e.preventDefault();
                         var currentInput = this.control_input.value.trim().toUpperCase();
 
                         if(this.isOpen) {
                             var targetOpt = this.activeOption;
-                            // ZETTBOT FIX: Auto-select opsi paling atas jika di HP pengguna memencet Enter
                             if (!targetOpt || !targetOpt.classList.contains('active')) { 
-                                var visibleOpts = Array.from(this.dropdown_content.querySelectorAll('.option')).filter(function(el) { return el.style.display !== 'none'; });
+                                var visibleOpts = Array.from(this.dropdown_content.querySelectorAll('.option:not(.create)')).filter(function(el) { return el.style.display !== 'none'; });
                                 if (visibleOpts.length > 0) { 
                                     targetOpt = visibleOpts[0]; 
                                 } else { 
@@ -231,7 +244,7 @@ function initCustomerAutocomplete() {
                                     this.setValue(val); 
                                 }
                             }
-                        } else if (currentInput) {
+                        } else if (currentInput && this.items.length === 0) {
                             this.createItem(currentInput);
                         }
                         this.close(); this.blur(); 
@@ -405,8 +418,8 @@ function addStaffServiceRow(autoFocus) {
     var htmlRow = delBtn;
     htmlRow += '<div class="mb-3"><select id="staff-srv-select-' + rowId + '" required class="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 outline-none text-sm font-bold"></select></div>';
     
-    // ZETTBOT FIX: Tambahkan onfocus="this.select()" agar field Qty otomatis memblok angka 1 saat diklik
-    htmlRow += '<div class="flex gap-3 items-end"><div class="w-1/3"><label class="block text-[10px] font-black text-slate-400 mb-1.5 uppercase" id="staff-srv-qty-lbl-' + rowId + '">Qty</label><input type="number" step="any" min="0.1" id="staff-srv-qty-' + rowId + '" value="1" onfocus="this.select()" oninput="calcStaffServiceRow(' + rowId + ')" onkeydown="if(event.key===\'Tab\' || event.key===\'Enter\'){event.preventDefault(); document.getElementById(\'staff-input-diskon\').focus();}" class="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 focus:border-teal-400 outline-none text-sm font-black text-slate-700 text-center"></div><div class="w-2/3"><label class="block text-[10px] font-black text-slate-400 mb-1.5 uppercase text-right">Subtotal</label><div class="w-full px-3 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-sm font-black text-slate-800 text-right tracking-tight" id="staff-srv-subtotal-' + rowId + '">Rp 0</div></div></div>';
+    // ZETTBOT FIX: setTimeout untuk memastikan fungsi this.select() berjalan sukses dan memblok angka 1 di semua HP Android
+    htmlRow += '<div class="flex gap-3 items-end"><div class="w-1/3"><label class="block text-[10px] font-black text-slate-400 mb-1.5 uppercase" id="staff-srv-qty-lbl-' + rowId + '">Qty</label><input type="number" step="any" min="0.1" id="staff-srv-qty-' + rowId + '" value="1" onfocus="var el=this; setTimeout(function(){el.select();}, 50);" oninput="calcStaffServiceRow(' + rowId + ')" onkeydown="if(event.key===\'Tab\' || event.key===\'Enter\' || event.keyCode===13){event.preventDefault(); document.getElementById(\'staff-input-diskon\').focus();}" class="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 focus:border-teal-400 outline-none text-sm font-black text-slate-700 text-center"></div><div class="w-2/3"><label class="block text-[10px] font-black text-slate-400 mb-1.5 uppercase text-right">Subtotal</label><div class="w-full px-3 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-sm font-black text-slate-800 text-right tracking-tight" id="staff-srv-subtotal-' + rowId + '">Rp 0</div></div></div>';
     
     rowDiv.innerHTML = htmlRow; container.appendChild(rowDiv);
     
@@ -419,12 +432,24 @@ function addStaffServiceRow(autoFocus) {
         tsInstances['staff-srv-select-' + rowId] = new TomSelect(selectEl, {
             create: false, placeholder: "🔍 Cari layanan...", selectOnTab: true, maxItems: 1, openOnFocus: false,
             shouldLoad: function(query) { return query.length > 0; },
+            
+            // ZETTBOT FIX: Gboard On-Blur Interceptor untuk Layanan
+            onBlur: function() {
+                var currentInput = this.control_input.value.trim();
+                if (currentInput && this.items.length === 0) {
+                    var visibleOpts = Array.from(this.dropdown_content.querySelectorAll('.option')).filter(function(el) { return el.style.display !== 'none'; });
+                    if (visibleOpts.length > 0) {
+                        var val = visibleOpts[0].getAttribute('data-value');
+                        if (val) this.setValue(val);
+                    }
+                }
+            },
+
             onKeyDown: function(e) {
-                if(e.key === 'Tab' || e.key === 'Enter') {
+                if(e.key === 'Tab' || e.key === 'Enter' || e.keyCode === 13) {
                     e.preventDefault();
                     if(this.isOpen) {
                         var targetOpt = this.activeOption;
-                        // ZETTBOT FIX: Auto-select opsi teratas di HP untuk layanan
                         if (!targetOpt || !targetOpt.classList.contains('active')) { 
                             var visibleOpts = Array.from(this.dropdown_content.querySelectorAll('.option')).filter(function(el) { return el.style.display !== 'none'; });
                             if (visibleOpts.length > 0) targetOpt = visibleOpts[0]; 
@@ -432,7 +457,7 @@ function addStaffServiceRow(autoFocus) {
                         
                         if (targetOpt) { var val = targetOpt.getAttribute('data-value'); if (val) { this.setValue(val); } }
                     }
-                    this.close(); this.blur(); setTimeout(function() { var qtyEl = document.getElementById('staff-srv-qty-' + rowId); if(qtyEl) { qtyEl.focus(); qtyEl.select(); } }, 100);
+                    this.close(); this.blur(); setTimeout(function() { var qtyEl = document.getElementById('staff-srv-qty-' + rowId); if(qtyEl) { qtyEl.focus(); } }, 100);
                 }
             },
             onChange: function(val) { handleStaffServiceSelect(rowId, val); validateStaffForm(); if(val) this.blur(); }
@@ -588,7 +613,6 @@ function execSaveStaff(recordObj, fileData, btn) {
         .withSuccessHandler(function(res) {
             if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
             if(res.success) {
-                // appData.produksi = res.data; Di-handle oleh ZettBridge
                 if (res.notaInfo && res.notaInfo['ID']) { var exists = appData.produksi.some(function(tx) { return tx['ID'] === res.notaInfo['ID']; }); if (!exists) { appData.produksi.push(res.notaInfo); } }
                 closeModal('modal-staff-tx'); 
                 
