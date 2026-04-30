@@ -722,11 +722,16 @@ function execSaveStaff(recordObj, fileData, btn) {
     if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
     if(String(recordObj['No Telpon']).startsWith("'")) { recordObj['No Telpon'] = recordObj['No Telpon'].substring(1); }
 
-    // 1. ZETTBOT ANTI-GHOST ROLLBACK: Simpan Instan ke Memori
-    var existsIdx = appData.produksi.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
-    if (existsIdx >= 0) { appData.produksi[existsIdx] = recordObj; } else { appData.produksi.unshift(recordObj); }
+    // 1. ZETTBOT ANTI-GHOST SHIELD: Daftarkan transaksi ke penjagaan memori
+    window._zettAntiGhost = window._zettAntiGhost || {};
+    window._zettAntiGhost[recordObj['ID']] = JSON.parse(JSON.stringify(recordObj));
+    setTimeout(function() { delete window._zettAntiGhost[recordObj['ID']]; }, 60000); // Dijaga ketat selama 60 detik
 
-    // 2. Pemotongan Kuota Pelanggan Instan
+    // 2. Optimistic UI Update Memory Lokal
+    var existsIdx = appData.produksi.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
+    if (existsIdx >= 0) { appData.produksi[existsIdx] = recordObj; } else { appData.produksi.push(recordObj); }
+
+    // 3. Pemotongan Kuota Pelanggan Instan
     if (recordObj['Pembayaran'] === 'Potong Kuota' && recordObj['Kg Terpakai']) {
         var custIdx = appData.pelanggan.findIndex(p => p['Nama Pelanggan'] === recordObj['Nama Pelanggan']);
         if (custIdx >= 0) {
@@ -735,12 +740,12 @@ function execSaveStaff(recordObj, fileData, btn) {
         }
     }
 
-    // 3. Suntik Firebase secara PAKSA agar 100% tersimpan sebagai sumber kebenaran (Source of Truth)
+    // 4. Suntik Firebase secara PAKSA agar sistem lain langsung sinkron
     if (typeof database !== 'undefined' && database) {
         database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
     }
 
-    // 4. Render UI tanpa menahan antarmuka
+    // 5. Render UI Instan (0-Delay)
     if(typeof renderStaffTable === 'function') renderStaffTable(true);
     if(typeof renderTable === 'function') renderTable('Produksi', true);
     if(typeof updateDashboard === 'function') updateDashboard();
@@ -751,13 +756,12 @@ function execSaveStaff(recordObj, fileData, btn) {
     document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx);
     showSuccessModal();
 
-    // 5. Server Back-up (Mencegah Google Sheets menimpa Firebase kita yang sudah update!)
+    // 6. Server Backup - Putus Callback agar data lambat tidak menimpa layar
     if (typeof google !== 'undefined' && google.script) {
         google.script.run
             .withSuccessHandler(function(res) {
-                // KOSONGKAN CALLBACK INI! Kita percaya 100% pada Firebase. 
-                // Jangan biarkan respon lambat Google Sheets menimpa aplikasi kita.
-                console.log("ZettBOT: Transaksi sukses di-backup ke Cold Storage (Sheets).");
+                // KOSONGKAN CALLBACK INI! Kita percaya sepenuhnya pada Firebase dan Shield kita.
+                console.log("ZettBOT: Transaksi selesai di-backup ke Sheets.");
             })
             .withFailureHandler(function(error) { showToast("Gagal backup ke Google Sheets", "error"); })
             .saveTransaksiStaff(recordObj, fileData);
@@ -800,14 +804,17 @@ function saveTxDetailStatus() {
     
     var updateMemory = function() {
         currentSavedTx['Status'] = newStatus; currentSavedTx['Pembayaran'] = newPembayaran; if (newPembayaran === 'Lunas') { currentSavedTx['Sisa Bayar'] = 0; }
+        
+        // ZETTBOT ANTI-GHOST SHIELD: Pelindungan Update
+        window._zettAntiGhost = window._zettAntiGhost || {};
+        window._zettAntiGhost[currentDetailId] = JSON.parse(JSON.stringify(currentSavedTx));
+        setTimeout(function() { delete window._zettAntiGhost[currentDetailId]; }, 60000);
+
         var idx = appData.produksi.findIndex(x => String(x.ID) === String(currentDetailId));
         if(idx >= 0) {
-            appData.produksi[idx]['Status'] = newStatus;
-            appData.produksi[idx]['Pembayaran'] = newPembayaran;
-            if (newPembayaran === 'Lunas') appData.produksi[idx]['Sisa Bayar'] = 0;
+            appData.produksi[idx] = window._zettAntiGhost[currentDetailId];
         }
 
-        // Sinkronisasi Instan Lintas Perangkat via Firebase
         if (typeof database !== 'undefined' && database) {
             database.ref('appData/produksi').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.produksi) : appData.produksi);
         }
@@ -832,8 +839,6 @@ function saveTxDetailStatus() {
     google.script.run
         .withSuccessHandler(function(res) {
             if (btn) { btn.innerHTML = origText; btn.disabled = false; }
-            // ZETTBOT ANTI-GHOST ROLLBACK:
-            // Kosongkan callback. Biarkan UI diurus Firebase dan sistem lokal.
             console.log("ZettBOT: Update status sukses di-backup ke Sheets.");
         })
         .withFailureHandler(function(error) { if (btn) { btn.innerHTML = origText; btn.disabled = false; } showToast("Sistem error saat update status", "error"); })
@@ -1191,99 +1196,39 @@ async function actionPrintReceipt() {
     }, 500); 
 }
 
-function actionSendWA() {
-    if(!currentSavedTx) return; 
-    var px = currentSavedTx; 
-    var hp = px['No Telpon'] || ''; 
-    if(hp.startsWith("'")) { hp = hp.substring(1); } 
-    if(hp.startsWith('0')) { hp = '62' + hp.substring(1); }
-    
-    var activeStatus = String(px['Status'] || 'Proses').trim().toUpperCase();
-    var activePmb = px['Pembayaran'] || 'Belum Lunas';
-    
-    var txModal = document.getElementById('modal-tx-detail');
-    if (txModal && !txModal.classList.contains('hidden')) {
-        var elStatus = document.getElementById('tx-detail-status');
-        if (elStatus) activeStatus = String(elStatus.value).trim().toUpperCase();
-        var elPmb = document.getElementById('tx-detail-pembayaran');
-        if (elPmb) activePmb = elPmb.value;
-    }
-
-    var layananListWA = ''; var estimasiGlobalWA = ''; var items = []; var diskonTx = 0; var potonganMemberTx = 0; var subtotalTx = Number(px['Total Harga'] || 0); var kgTerpakaiTx = parseFloat(px['Kg Terpakai']) || 0;
-    var custData = appData.pelanggan.find(function(p) { return p['Nama Pelanggan'] === px['Nama Pelanggan']; }); var currentSisaKuota = custData ? (parseFloat(custData['Sisa Kuota (Kg)']) || 0) : 0; 
-    currentSisaKuota = Math.round(currentSisaKuota * 100) / 100;
-    if (px['Detail Layanan JSON']) { try { var parsed = JSON.parse(px['Detail Layanan JSON']); if(!Array.isArray(parsed)) { items = parsed.items || []; diskonTx = parsed.diskon || 0; potonganMemberTx = parsed.potonganMember || 0; subtotalTx = parsed.subtotal || subtotalTx; } else { items = parsed; } } catch(e) {} }
-    
-    var totalHarga = Number(px['Total Harga'] || 0); 
-    var pmbStatusVal = activePmb;
-    
-    if (totalHarga === 0 && subtotalTx > 0 && diskonTx === 0) { pmbStatusVal = 'Potong Kuota'; }
-    else if (totalHarga === 0 && (pmbStatusVal === 'Potong Kuota' || kgTerpakai > 0)) { pmbStatusVal = 'Potong Kuota'; }
-    
-    var isPureMember = (totalHarga === 0 && pmbStatusVal === 'Potong Kuota');
-    if (pmbStatusVal === 'Potong Kuota' && kgTerpakaiTx === 0 && items.length > 0) { items.forEach(function(i) { if(i.satuan === 'Kg') kgTerpakaiTx += i.qty; }); }
-    
-    var trackingSisaKuota = currentSisaKuota + kgTerpakaiTx; var remainingKg = kgTerpakaiTx;
-    var allSameDate = true; var firstDate = items.length > 0 ? (items[0].estimasiSelesai ? String(items[0].estimasiSelesai).split(' - ')[0].split(' ')[0] : '') : '';
-    for(var i=1; i<items.length; i++){ var currEst = items[i].estimasiSelesai ? String(items[i].estimasiSelesai).split(' - ')[0].split(' ')[0] : ''; if(currEst !== firstDate){ allSameDate = false; break; } }
-    if (allSameDate && firstDate) { estimasiGlobalWA = '\nSelesai : ' + firstDate; }
-    
-    if (items.length > 0) {
-        var arrWA = [];
-        items.forEach(function(item) {
-            var isCoveredByQuota = false; var kgDeducted = 0;
-            if (pmbStatusVal === 'Potong Kuota' && item.satuan === 'Kg' && remainingKg > 0) { isCoveredByQuota = true; kgDeducted = Math.min(item.qty, remainingKg); remainingKg -= kgDeducted; }
-            var itemEst = item.estimasiSelesai ? String(item.estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
-            var estTxt = (!allSameDate && itemEst) ? ('\nSelesai : ' + itemEst) : '';
-            if (isCoveredByQuota) { arrWA.push(item.nama + '\n' + (Math.round(trackingSisaKuota*100)/100) + ' Kg - ' + item.qty + ' Kg = ' + (Math.round((trackingSisaKuota - item.qty)*100)/100) + ' Kg' + estTxt); trackingSisaKuota -= item.qty; } 
-            else { arrWA.push(item.nama + '\n' + item.qty + ' x Rp ' + Number(item.subtotal/item.qty).toLocaleString('id-ID') + ' = Rp ' + Number(item.subtotal).toLocaleString('id-ID') + estTxt); }
-        });
-        layananListWA = arrWA.join('\n\n'); 
-    } else { layananListWA = (px['Layanan'] || '').split('+').map(function(l) { return l.trim(); }).join('\n'); }
-    
-    var dpAmount = Number(px['DP'] || 0); 
-    var sisaAmount = Number(px['Sisa Bayar'] !== undefined ? px['Sisa Bayar'] : totalHarga); 
-    if (pmbStatusVal === 'Lunas' || pmbStatusVal === 'Potong Kuota') { sisaAmount = 0; }
-    
-    var arrPaymentWA = [];
-    var usedQuota = (pmbStatusVal === 'Potong Kuota' || kgTerpakaiTx > 0);
-    
-    var statusTagihan = pmbStatusVal;
-    if (statusTagihan === 'Potong Kuota' && totalHarga > 0) statusTagihan = 'Belum Lunas';
-    
-    if (usedQuota) {
-        arrPaymentWA.push('Sisa Kuota = ' + currentSisaKuota + ' Kg');
-        arrPaymentWA.push('Status Bayar = Potong Kuota');
-    }
-    if (!isPureMember) {
-        if (usedQuota) { arrPaymentWA.push(''); }
-        if (diskonTx > 0) { arrPaymentWA.push('Diskon = - Rp ' + diskonTx.toLocaleString('id-ID')); }
-        arrPaymentWA.push('Total Bayar = Rp ' + totalHarga.toLocaleString('id-ID'));
-        arrPaymentWA.push('Status Bayar = ' + statusTagihan);
-        if (statusTagihan === 'DP') {
-            arrPaymentWA.push('DP = Rp ' + dpAmount.toLocaleString('id-ID'));
-            arrPaymentWA.push('Sisa Bayar = Rp ' + sisaAmount.toLocaleString('id-ID'));
+// ZETTBOT ANTI-GHOST ROLLBACK SHIELD
+// Interval yang akan berpatroli memastikan data yang baru Anda simpan tidak ditimpa oleh data usang dari Google Sheets!
+if (!window._antiGhostInterval) {
+    window._antiGhostInterval = setInterval(function() {
+        if (window._zettAntiGhost && Object.keys(window._zettAntiGhost).length > 0 && typeof appData !== 'undefined' && appData.produksi) {
+            let isRepaired = false;
+            Object.keys(window._zettAntiGhost).forEach(function(txId) {
+                let safeTx = window._zettAntiGhost[txId];
+                let idx = appData.produksi.findIndex(function(p) { return String(p['ID']) === String(txId); });
+                
+                if (idx === -1) {
+                    // Kasus 1: Transaksi dihapus gaib oleh sync yang telat -> Tembak balik ke tabel!
+                    appData.produksi.push(safeTx);
+                    isRepaired = true;
+                } else {
+                    // Kasus 2: Transaksi ada, tapi statusnya balik ke lawas (contoh: udah Lunas balik ke Belum Lunas) -> Timpa paksa!
+                    if (appData.produksi[idx]['Status'] !== safeTx['Status'] || appData.produksi[idx]['Pembayaran'] !== safeTx['Pembayaran']) {
+                        appData.produksi[idx] = safeTx;
+                        isRepaired = true;
+                    }
+                }
+            });
+            
+            if (isRepaired) {
+                if (typeof renderStaffTable === 'function') renderStaffTable(true);
+                if (typeof renderTable === 'function') renderTable('Produksi', true);
+                if (typeof database !== 'undefined' && database) {
+                    // Paksa sinkronisasi ke cloud agar device lain juga langsung normal
+                    database.ref('appData/produksi').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.produksi) : appData.produksi);
+                }
+            }
         }
-    }
-    var paymentWA = arrPaymentWA.join('\n');
-    var kasirName = (currentUser && currentUser['Nama Lengkap']) ? currentUser['Nama Lengkap'] : 'Admin';
-    var text = '';
-    
-    if (activeStatus === 'SELESAI') {
-        text = '===================================\n' +
-               'Hai Kak ' + (px['Nama Pelanggan'] || '-') + ' laundry anda sudah selesai, siap untuk diambil\n' +
-               'silahkan datang kelaundry kami. Terimakasi\n\n' +
-               '---------------------------------------------\n' +
-               'NO. Nota     : ' + (px['No Nota'] || '-') + '\n' +
-               'Status Bayar : ' + statusTagihan + '\n' +
-               'Sisa tagihan : Rp. ' + sisaAmount.toLocaleString('id-ID') + '\n' +
-               '===================================';
-    } else {
-        var cleanStatusName = activeStatus.charAt(0).toUpperCase() + activeStatus.slice(1).toLowerCase();
-        text = appSettings.nama + '\n' + appSettings.alamat + '\n====================\nTanggal : ' + (px['Waktu Masuk'] ? String(px['Waktu Masuk']).split(' ')[0] : '-') + estimasiGlobalWA + '\nNo Nota : ' + (px['No Nota'] || '-') + '\nKasir : ' + kasirName + '\nNama : ' + (px['Nama Pelanggan'] || '-') + '\n====================\n' + layananListWA + '\n====================\n' + paymentWA + '\n====================\nStatus : ' + cleanStatusName + '\nDilunasi : -\nDiambil : -\n====================\n1. Pakaian luntur bukan tanggung jawab laundry\n2. Minimum perhitungan laundry kiloan (1 Kg)\n3. Tidak menerima laundry dalaman\n4. Cucian tidak diambil 1 bulan bukan tanggung jawab kami.';
-    }
-
-    window.open('https://wa.me/' + hp + '?text=' + encodeURIComponent(text), '_blank');
+    }, 1500); // Patroli berlangsung setiap 1.5 detik
 }
 
 // GLOBAL INPUT UPPERCASE (Bypass Login/Users)
