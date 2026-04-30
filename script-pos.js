@@ -752,12 +752,9 @@ function execSaveStaff(recordObj, fileData, btn) {
     showSuccessModal();
 
     // 3. ZETTBOT SHIELD: Fire-and-Forget Backup!
-    // Google Sheets HANYA bertugas sebagai brankas cadangan. KITA PUTUSKAN HAK Google Sheets untuk merubah UI/Layar.
     if (typeof google !== 'undefined' && google.script) {
         google.script.run
             .withSuccessHandler(function(res) {
-                // KOSONG MUTLAK!
-                // Jangan ada satupun kode appData = res.data di sini. Biarkan layar tetap utuh.
                 console.log("ZettBOT: Transaksi sukses di-backup secara diam-diam ke Sheets.");
             })
             .withFailureHandler(function(error) { 
@@ -835,7 +832,6 @@ function saveTxDetailStatus() {
     // Fire and Forget Backup
     google.script.run
         .withSuccessHandler(function(res) {
-            // KOSONG MUTLAK!
             console.log("ZettBOT: Update status sukses di-backup ke Sheets.");
         })
         .withFailureHandler(function(error) { 
@@ -1195,111 +1191,22 @@ async function actionPrintReceipt() {
     }, 500); 
 }
 
-function actionSendWA() {
-    if(!currentSavedTx) return; 
-    var px = currentSavedTx; 
-    var hp = px['No Telpon'] || ''; 
-    if(hp.startsWith("'")) { hp = hp.substring(1); } 
-    if(hp.startsWith('0')) { hp = '62' + hp.substring(1); }
-    
-    var activeStatus = String(px['Status'] || 'Proses').trim().toUpperCase();
-    var activePmb = px['Pembayaran'] || 'Belum Lunas';
-    
-    var txModal = document.getElementById('modal-tx-detail');
-    if (txModal && !txModal.classList.contains('hidden')) {
-        var elStatus = document.getElementById('tx-detail-status');
-        if (elStatus) activeStatus = String(elStatus.value).trim().toUpperCase();
-        var elPmb = document.getElementById('tx-detail-pembayaran');
-        if (elPmb) activePmb = elPmb.value;
-    }
-
-    var layananListWA = ''; var estimasiGlobalWA = ''; var items = []; var diskonTx = 0; var potonganMemberTx = 0; var subtotalTx = Number(px['Total Harga'] || 0); var kgTerpakaiTx = parseFloat(px['Kg Terpakai']) || 0;
-    var custData = appData.pelanggan.find(function(p) { return p['Nama Pelanggan'] === px['Nama Pelanggan']; }); var currentSisaKuota = custData ? (parseFloat(custData['Sisa Kuota (Kg)']) || 0) : 0; 
-    currentSisaKuota = Math.round(currentSisaKuota * 100) / 100;
-    if (px['Detail Layanan JSON']) { try { var parsed = JSON.parse(px['Detail Layanan JSON']); if(!Array.isArray(parsed)) { items = parsed.items || []; diskonTx = parsed.diskon || 0; potonganMemberTx = parsed.potonganMember || 0; subtotalTx = parsed.subtotal || subtotalTx; } else { items = parsed; } } catch(e) {} }
-    
-    var totalHarga = Number(px['Total Harga'] || 0); 
-    var pmbStatusVal = activePmb;
-    
-    if (totalHarga === 0 && subtotalTx > 0 && diskonTx === 0) { pmbStatusVal = 'Potong Kuota'; }
-    else if (totalHarga === 0 && (pmbStatusVal === 'Potong Kuota' || kgTerpakai > 0)) { pmbStatusVal = 'Potong Kuota'; }
-    
-    var isPureMember = (totalHarga === 0 && pmbStatusVal === 'Potong Kuota');
-    if (pmbStatusVal === 'Potong Kuota' && kgTerpakaiTx === 0 && items.length > 0) { items.forEach(function(i) { if(i.satuan === 'Kg') kgTerpakaiTx += i.qty; }); }
-    
-    var trackingSisaKuota = currentSisaKuota + kgTerpakaiTx; var remainingKg = kgTerpakaiTx;
-    var allSameDate = true; var firstDate = items.length > 0 ? (items[0].estimasiSelesai ? String(items[0].estimasiSelesai).split(' - ')[0].split(' ')[0] : '') : '';
-    for(var i=1; i<items.length; i++){ var currEst = items[i].estimasiSelesai ? String(items[i].estimasiSelesai).split(' - ')[0].split(' ')[0] : ''; if(currEst !== firstDate){ allSameDate = false; break; } }
-    if (allSameDate && firstDate) { estimasiGlobalWA = '\nSelesai : ' + firstDate; }
-    
-    if (items.length > 0) {
-        var arrWA = [];
-        items.forEach(function(item) {
-            var isCoveredByQuota = false; var kgDeducted = 0;
-            if (pmbStatusVal === 'Potong Kuota' && item.satuan === 'Kg' && remainingKg > 0) { isCoveredByQuota = true; kgDeducted = Math.min(item.qty, remainingKg); remainingKg -= kgDeducted; }
-            var itemEst = item.estimasiSelesai ? String(item.estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
-            var estTxt = (!allSameDate && itemEst) ? ('\nSelesai : ' + itemEst) : '';
-            if (isCoveredByQuota) { arrWA.push(item.nama + '\n' + (Math.round(trackingSisaKuota*100)/100) + ' Kg - ' + item.qty + ' Kg = ' + (Math.round((trackingSisaKuota - item.qty)*100)/100) + ' Kg' + estTxt); trackingSisaKuota -= item.qty; } 
-            else { arrWA.push(item.nama + '\n' + item.qty + ' x Rp ' + Number(item.subtotal/item.qty).toLocaleString('id-ID') + ' = Rp ' + Number(item.subtotal).toLocaleString('id-ID') + estTxt); }
-        });
-        layananListWA = arrWA.join('\n\n'); 
-    } else { layananListWA = (px['Layanan'] || '').split('+').map(function(l) { return l.trim(); }).join('\n'); }
-    
-    var dpAmount = Number(px['DP'] || 0); 
-    var sisaAmount = Number(px['Sisa Bayar'] !== undefined ? px['Sisa Bayar'] : totalHarga); 
-    if (pmbStatusVal === 'Lunas' || pmbStatusVal === 'Potong Kuota') { sisaAmount = 0; }
-    
-    var arrPaymentWA = [];
-    var usedQuota = (pmbStatusVal === 'Potong Kuota' || kgTerpakaiTx > 0);
-    
-    var statusTagihan = pmbStatusVal;
-    if (statusTagihan === 'Potong Kuota' && totalHarga > 0) statusTagihan = 'Belum Lunas';
-    
-    if (usedQuota) {
-        arrPaymentWA.push('Sisa Kuota = ' + currentSisaKuota + ' Kg');
-        arrPaymentWA.push('Status Bayar = Potong Kuota');
-    }
-    if (!isPureMember) {
-        if (usedQuota) { arrPaymentWA.push(''); }
-        if (diskonTx > 0) { arrPaymentWA.push('Diskon = - Rp ' + diskonTx.toLocaleString('id-ID')); }
-        arrPaymentWA.push('Total Bayar = Rp ' + totalHarga.toLocaleString('id-ID'));
-        arrPaymentWA.push('Status Bayar = ' + statusTagihan);
-        if (statusTagihan === 'DP') {
-            arrPaymentWA.push('DP = Rp ' + dpAmount.toLocaleString('id-ID'));
-            arrPaymentWA.push('Sisa Bayar = Rp ' + sisaAmount.toLocaleString('id-ID'));
-        }
-    }
-    var paymentWA = arrPaymentWA.join('\n');
-    var kasirName = (currentUser && currentUser['Nama Lengkap']) ? currentUser['Nama Lengkap'] : 'Admin';
-    var text = '';
-    
-    if (activeStatus === 'SELESAI') {
-        text = '===================================\n' +
-               'Hai Kak ' + (px['Nama Pelanggan'] || '-') + ' laundry anda sudah selesai, siap untuk diambil\n' +
-               'silahkan datang kelaundry kami. Terimakasi\n\n' +
-               '---------------------------------------------\n' +
-               'NO. Nota     : ' + (px['No Nota'] || '-') + '\n' +
-               'Status Bayar : ' + statusTagihan + '\n' +
-               'Sisa tagihan : Rp. ' + sisaAmount.toLocaleString('id-ID') + '\n' +
-               '===================================';
-    } else {
-        var cleanStatusName = activeStatus.charAt(0).toUpperCase() + activeStatus.slice(1).toLowerCase();
-        text = appSettings.nama + '\n' + appSettings.alamat + '\n====================\nTanggal : ' + (px['Waktu Masuk'] ? String(px['Waktu Masuk']).split(' ')[0] : '-') + estimasiGlobalWA + '\nNo Nota : ' + (px['No Nota'] || '-') + '\nKasir : ' + kasirName + '\nNama : ' + (px['Nama Pelanggan'] || '-') + '\n====================\n' + layananListWA + '\n====================\n' + paymentWA + '\n====================\nStatus : ' + cleanStatusName + '\nDilunasi : -\nDiambil : -\n====================\n1. Pakaian luntur bukan tanggung jawab laundry\n2. Minimum perhitungan laundry kiloan (1 Kg)\n3. Tidak menerima laundry dalaman\n4. Cucian tidak diambil 1 bulan bukan tanggung jawab kami.';
-    }
-
-    window.open('https://wa.me/' + hp + '?text=' + encodeURIComponent(text), '_blank');
-}
-
-// GLOBAL INPUT UPPERCASE (Bypass Login/Users)
+// ZETTBOT FIX: Hindari Error "InvalidStateError" di Input File!
 document.addEventListener('input', e => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        // Jangan pernah uppercase field file, password, email, atau angka!
+        if (e.target.type === 'file' || e.target.type === 'password' || e.target.type === 'email' || e.target.type === 'number') return;
+        
         if (e.target.closest('#modal-users') || e.target.closest('#login-overlay')) return;
-        var start = e.target.selectionStart;
+        
         var oldVal = e.target.value;
         var newVal = oldVal.toUpperCase();
+        
         if (oldVal !== newVal) {
+            var start = e.target.selectionStart;
             e.target.value = newVal;
-            e.target.setSelectionRange(start, start);
+            // Cegah error cursor-jump di beberapa HP
+            try { e.target.setSelectionRange(start, start); } catch(err) {} 
         }
     }
 });
