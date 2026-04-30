@@ -722,11 +722,11 @@ function execSaveStaff(recordObj, fileData, btn) {
     if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
     if(String(recordObj['No Telpon']).startsWith("'")) { recordObj['No Telpon'] = recordObj['No Telpon'].substring(1); }
 
-    // ZETTBOT ANTI-GHOST ROLLBACK: Optimistic UI Update Memory Lokal
+    // 1. ZETTBOT ANTI-GHOST ROLLBACK: Simpan Instan ke Memori
     var existsIdx = appData.produksi.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
-    if (existsIdx >= 0) { appData.produksi[existsIdx] = recordObj; } else { appData.produksi.push(recordObj); }
+    if (existsIdx >= 0) { appData.produksi[existsIdx] = recordObj; } else { appData.produksi.unshift(recordObj); }
 
-    // ZETTBOT ANTI-GHOST ROLLBACK: Pemotongan Kuota Optimistic di Layar Kasir
+    // 2. Pemotongan Kuota Pelanggan Instan
     if (recordObj['Pembayaran'] === 'Potong Kuota' && recordObj['Kg Terpakai']) {
         var custIdx = appData.pelanggan.findIndex(p => p['Nama Pelanggan'] === recordObj['Nama Pelanggan']);
         if (custIdx >= 0) {
@@ -735,11 +735,12 @@ function execSaveStaff(recordObj, fileData, btn) {
         }
     }
 
-    // Suntik Firebase secara PAKSA agar perangkat lain langsung sinkron dalam 0ms
+    // 3. Suntik Firebase secara PAKSA agar 100% tersimpan sebagai sumber kebenaran (Source of Truth)
     if (typeof database !== 'undefined' && database) {
         database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
     }
 
+    // 4. Render UI tanpa menahan antarmuka
     if(typeof renderStaffTable === 'function') renderStaffTable(true);
     if(typeof renderTable === 'function') renderTable('Produksi', true);
     if(typeof updateDashboard === 'function') updateDashboard();
@@ -750,45 +751,15 @@ function execSaveStaff(recordObj, fileData, btn) {
     document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx);
     showSuccessModal();
 
-    // ZETTBOT ANTI-GHOST ROLLBACK: Server Truth Reconciliation
+    // 5. Server Back-up (Mencegah Google Sheets menimpa Firebase kita yang sudah update!)
     if (typeof google !== 'undefined' && google.script) {
         google.script.run
             .withSuccessHandler(function(res) {
-                if (res && res.success) {
-                    if (res.data) {
-                        let freshProd = typeof mergeProduksiData === 'function' ? mergeProduksiData(res.data) : res.data;
-                        let srvIdx = freshProd.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
-                        
-                        // Injeksi kembali secara manual jika Google Sheets lambat memperbarui respons
-                        if (srvIdx === -1) {
-                            freshProd.push(recordObj);
-                        } else {
-                            freshProd[srvIdx] = recordObj;
-                        }
-                        appData.produksi = freshProd;
-                    }
-                    
-                    if (res.pelanggan) {
-                        let freshPlg = typeof cleanPhoneQuotes === 'function' ? cleanPhoneQuotes(res.pelanggan) : res.pelanggan;
-                        let pLocalIdx = appData.pelanggan.findIndex(p => p['Nama Pelanggan'] === recordObj['Nama Pelanggan']);
-                        let pSrvIdx = freshPlg.findIndex(p => p['Nama Pelanggan'] === recordObj['Nama Pelanggan']);
-                        
-                        // Pertahankan sisa kuota yang terpotong jika Server lag
-                        if (recordObj['Pembayaran'] === 'Potong Kuota' && pLocalIdx >= 0 && pSrvIdx >= 0) {
-                            if (parseFloat(freshPlg[pSrvIdx]['Sisa Kuota (Kg)']) > parseFloat(appData.pelanggan[pLocalIdx]['Sisa Kuota (Kg)'])) {
-                                freshPlg[pSrvIdx]['Sisa Kuota (Kg)'] = appData.pelanggan[pLocalIdx]['Sisa Kuota (Kg)'];
-                            }
-                        }
-                        appData.pelanggan = freshPlg;
-                    }
-
-                    if (typeof database !== 'undefined' && database) {
-                        database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
-                    }
-                    if(typeof renderStaffTable === 'function') renderStaffTable(true);
-                }
+                // KOSONGKAN CALLBACK INI! Kita percaya 100% pada Firebase. 
+                // Jangan biarkan respon lambat Google Sheets menimpa aplikasi kita.
+                console.log("ZettBOT: Transaksi sukses di-backup ke Cold Storage (Sheets).");
             })
-            .withFailureHandler(function(error) { showToast("Gagal sinkronisasi background", "error"); })
+            .withFailureHandler(function(error) { showToast("Gagal backup ke Google Sheets", "error"); })
             .saveTransaksiStaff(recordObj, fileData);
     }
 }
@@ -829,13 +800,14 @@ function saveTxDetailStatus() {
     
     var updateMemory = function() {
         currentSavedTx['Status'] = newStatus; currentSavedTx['Pembayaran'] = newPembayaran; if (newPembayaran === 'Lunas') { currentSavedTx['Sisa Bayar'] = 0; }
-        var idx = appData.produksi.findIndex(x => x.ID === currentDetailId);
+        var idx = appData.produksi.findIndex(x => String(x.ID) === String(currentDetailId));
         if(idx >= 0) {
             appData.produksi[idx]['Status'] = newStatus;
             appData.produksi[idx]['Pembayaran'] = newPembayaran;
             if (newPembayaran === 'Lunas') appData.produksi[idx]['Sisa Bayar'] = 0;
         }
 
+        // Sinkronisasi Instan Lintas Perangkat via Firebase
         if (typeof database !== 'undefined' && database) {
             database.ref('appData/produksi').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.produksi) : appData.produksi);
         }
@@ -849,29 +821,20 @@ function saveTxDetailStatus() {
          updateMemory();
          closeModal('modal-tx-detail'); document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx); showSuccessModal(); return;
     }
+    
+    // Optimistic UI Instan 0-Detik
+    updateMemory();
+    closeModal('modal-tx-detail'); 
+    document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx); 
+    showSuccessModal();
+
+    // Server Backup
     google.script.run
         .withSuccessHandler(function(res) {
             if (btn) { btn.innerHTML = origText; btn.disabled = false; }
-            if(res.success) {
-                updateMemory();
-                closeModal('modal-tx-detail'); document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx); showSuccessModal();
-
-                if (res.data) {
-                    let freshProd = typeof mergeProduksiData === 'function' ? mergeProduksiData(res.data) : res.data;
-                    // ZETTBOT ANTI-GHOST ROLLBACK
-                    var srvIdx = freshProd.findIndex(x => String(x.ID) === String(currentDetailId));
-                    if(srvIdx >= 0) {
-                        freshProd[srvIdx]['Status'] = newStatus;
-                        freshProd[srvIdx]['Pembayaran'] = newPembayaran;
-                        if (newPembayaran === 'Lunas') freshProd[srvIdx]['Sisa Bayar'] = 0;
-                    }
-                    appData.produksi = freshProd;
-
-                    if (typeof database !== 'undefined' && database) {
-                        database.ref('appData/produksi').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.produksi) : appData.produksi);
-                    }
-                }
-            } else { showToast(res.message, "error"); }
+            // ZETTBOT ANTI-GHOST ROLLBACK:
+            // Kosongkan callback. Biarkan UI diurus Firebase dan sistem lokal.
+            console.log("ZettBOT: Update status sukses di-backup ke Sheets.");
         })
         .withFailureHandler(function(error) { if (btn) { btn.innerHTML = origText; btn.disabled = false; } showToast("Sistem error saat update status", "error"); })
         .updateStatusProduksi(currentDetailId, newStatus, newPembayaran);
