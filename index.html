@@ -7,6 +7,15 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
+    
+    <!-- PWA REQUIRED TAGS -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#14b8a6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Waroenk POS">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3003/3003984.png">
+
     <title>Waroenk Laundry Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
@@ -387,6 +396,21 @@
 <script src="script-core.js"></script>
 <script src="script-admin.js"></script>
 <script src="script-pos.js"></script>
+
+<!-- REGISTER SERVICE WORKER UNTUK PWA -->
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js')
+                .then(registration => {
+                    console.log('ZettBOT: Service Worker Terdaftar Sukses!', registration.scope);
+                })
+                .catch(error => {
+                    console.error('ZettBOT: Service Worker Gagal:', error);
+                });
+        });
+    }
+</script>
 
 </body>
 </html>
