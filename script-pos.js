@@ -355,25 +355,29 @@ function initCustomerAutocomplete() {
     });
 }
 
+// ZETTBOT FIX: Scroll Tepat Sasaran Saat Diskon/Pembayaran Fokus 
 function attachPaymentScroll(inputId) {
     var el = document.getElementById(inputId);
-    if (el) {
-        el.onfocus = function() {
+    if (el && !el.dataset.scrollAttached) {
+        el.dataset.scrollAttached = 'true'; // Hindari multiple event listener
+        el.addEventListener('focus', function() {
             var scrollArea = document.getElementById('staff-modal-scroll-area');
-            var targetWrapper = document.getElementById('staff-section-pembayaran-dokumentasi');
-            if (scrollArea && targetWrapper) {
+            var footer = document.getElementById('staff-footer-action');
+            if (scrollArea && footer) {
                 var executeScroll = function() {
-                    var rect = targetWrapper.getBoundingClientRect();
+                    var footerRect = footer.getBoundingClientRect();
                     var scrollRect = scrollArea.getBoundingClientRect();
+                    // Tarik scroll ke bawah sedemikian rupa sehingga dasar footer menyentuh bagian paling bawah layar (di atas keyboard)
                     scrollArea.scrollTo({
-                        top: scrollArea.scrollTop + (rect.top - scrollRect.top) - 10,
+                        top: scrollArea.scrollTop + (footerRect.bottom - scrollRect.bottom) + 20, 
                         behavior: 'smooth'
                     });
                 };
-                setTimeout(executeScroll, 260); 
-                setTimeout(executeScroll, 610);
+                // Timpa global scroll dengan timeout yang sedikit lebih lambat
+                setTimeout(executeScroll, 280); 
+                setTimeout(executeScroll, 650);
             }
-        };
+        }, true);
     }
 }
 
@@ -391,6 +395,7 @@ function openStaffModal() {
     (appData.produksi||[]).forEach(function(row) { if(row['No Nota'] && row['No Nota'].startsWith(prefix)) { var parts = row['No Nota'].split('.'); if (parts.length > 2) { var n = parseInt(parts[2]); if(!isNaN(n) && n > maxNum) maxNum = n; } } });
     var notaInput = document.getElementById('staff-input-nota'); if (notaInput) { notaInput.value = prefix + String(maxNum+1).padStart(3,'0'); }
     
+    // Terapkan detektor scroll ke elemen pembayaran
     attachPaymentScroll('staff-input-diskon');
     attachPaymentScroll('staff-input-pembayaran');
     attachPaymentScroll('staff-input-dp');
@@ -443,7 +448,8 @@ function addStaffServiceRow(autoFocus) {
     var htmlRow = delBtn;
     htmlRow += '<div class="mb-3"><select id="staff-srv-select-' + rowId + '" required class="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 outline-none text-sm font-bold"></select></div>';
     
-    htmlRow += '<div class="flex gap-3 items-end"><div class="w-1/3"><label class="block text-[10px] font-black text-slate-400 mb-1.5 uppercase" id="staff-srv-qty-lbl-' + rowId + '">Qty</label><input type="number" step="any" min="0.1" id="staff-srv-qty-' + rowId + '" value="1" onfocus="var el=this; setTimeout(function(){el.select();}, 50);" oninput="calcStaffServiceRow(' + rowId + ')" onkeydown="if(event.key===\'Tab\' || event.key===\'Enter\' || event.keyCode===13){event.preventDefault(); document.getElementById(\'staff-input-diskon\').focus();}" class="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 focus:border-teal-400 outline-none text-sm font-black text-slate-700 text-center"></div><div class="w-2/3"><label class="block text-[10px] font-black text-slate-400 mb-1.5 uppercase text-right">Subtotal</label><div class="w-full px-3 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-sm font-black text-slate-800 text-right tracking-tight" id="staff-srv-subtotal-' + rowId + '">Rp 0</div></div></div>';
+    // ZETTBOT FIX: Optimasi blok teks qty Android & iPhone
+    htmlRow += '<div class="flex gap-3 items-end"><div class="w-1/3"><label class="block text-[10px] font-black text-slate-400 mb-1.5 uppercase" id="staff-srv-qty-lbl-' + rowId + '">Qty</label><input type="number" step="any" min="0.1" id="staff-srv-qty-' + rowId + '" value="1" onfocus="var el=this; setTimeout(function(){ el.select(); try{ el.setSelectionRange(0, 9999); }catch(e){} }, 50);" oninput="calcStaffServiceRow(' + rowId + ')" onkeydown="if(event.key===\'Tab\' || event.key===\'Enter\' || event.keyCode===13){event.preventDefault(); document.getElementById(\'staff-input-diskon\').focus();}" class="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 focus:border-teal-400 outline-none text-sm font-black text-slate-700 text-center"></div><div class="w-2/3"><label class="block text-[10px] font-black text-slate-400 mb-1.5 uppercase text-right">Subtotal</label><div class="w-full px-3 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-sm font-black text-slate-800 text-right tracking-tight" id="staff-srv-subtotal-' + rowId + '">Rp 0</div></div></div>';
     
     rowDiv.innerHTML = htmlRow; container.appendChild(rowDiv);
     
@@ -489,6 +495,7 @@ function addStaffServiceRow(autoFocus) {
                 validateStaffForm(); 
                 if(val) { 
                     this.blur(); 
+                    // Otomatis melompat ke input QTY
                     setTimeout(function() { 
                         var qtyEl = document.getElementById('staff-srv-qty-' + rowId); 
                         if(qtyEl) { qtyEl.focus(); } 
@@ -571,9 +578,25 @@ function previewFileName(input) {
     validateStaffForm(); setTimeout(function() { var btn = document.getElementById('btn-submit-staff'); var footer = document.getElementById('staff-footer-action'); if (btn && footer && !footer.classList.contains('hidden')) { btn.focus(); } }, 300);
 }
 
+// ZETTBOT FIX: Memindahkan footer form ke dalam area normal (tidak lagi mengambang / absolute)
 function validateStaffForm() {
     var footer = document.getElementById('staff-footer-action');
-    if(footer) { footer.classList.remove('hidden'); footer.classList.add('flex'); }
+    var form = document.getElementById('form-staff-tx');
+    if(footer) { 
+        footer.classList.remove('hidden'); 
+        footer.classList.add('flex'); 
+        
+        // Pindahkan footer ke bawah card pembayaran agar tidak melayang (mengatasi hantu footer)
+        if (form && footer.parentNode !== form) {
+            footer.classList.remove('absolute', 'bottom-0', 'left-0');
+            footer.classList.add('relative', 'rounded-2xl', 'mt-3', 'border', 'border-slate-200', 'bg-white');
+            footer.style.boxShadow = '0 -4px 15px rgba(0,0,0,0.02)';
+            form.appendChild(footer);
+            
+            // Hapus padding kosong bekas letak footer lama
+            form.classList.remove('pb-12'); 
+        }
+    }
 }
 
 function submitStaffTransaction() {
