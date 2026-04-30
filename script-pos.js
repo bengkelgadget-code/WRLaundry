@@ -1178,33 +1178,3 @@ document.addEventListener('touchend', e => {
         fetchInitialData();
     }
 });
-
-// ZETTBOT PRO FIX: Mengangkat Footer "SIMPAN" ke Atas Virtual Keyboard HP
-if (window.visualViewport) {
-    const viewportHandler = function() {
-        var footer = document.getElementById('staff-footer-action');
-        var modalTx = document.getElementById('modal-staff-tx');
-        var scrollArea = document.getElementById('staff-modal-scroll-area');
-        
-        if (footer && modalTx && !modalTx.classList.contains('hidden')) {
-            var modalRect = modalTx.getBoundingClientRect();
-            var vvHeight = window.visualViewport.height;
-            // Menghitung berapa pixel layar kita yang tertutup keyboard
-            var offset = modalRect.height - vvHeight;
-            
-            if (offset > 50) {
-                // Keyboard muncul! Angkat footer ke atas sejauh tinggi keyboard
-                footer.style.bottom = offset + 'px';
-                // Beri ruang lega di bawah konten agar area Diskon tidak tertutup footer
-                if (scrollArea) scrollArea.style.paddingBottom = (offset + 120) + 'px';
-            } else {
-                // Keyboard turun! Kembalikan footer ke paling bawah
-                footer.style.bottom = '0px';
-                if (scrollArea) scrollArea.style.paddingBottom = ''; // Kembali ke padding bawaan CSS
-            }
-        }
-    };
-    
-    window.visualViewport.addEventListener('resize', viewportHandler);
-    window.visualViewport.addEventListener('scroll', viewportHandler);
-}
