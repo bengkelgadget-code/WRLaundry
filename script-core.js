@@ -199,7 +199,9 @@ if (typeof google === 'undefined') {
                         let rec = payload.recordObj || payload;
                         
                         if (payload.fileData && payload.fileData.base64) {
-                            rec['Foto'] = 'data:' + payload.fileData.mimeType + ';base64,' + payload.fileData.base64;
+                            // FIX: Jangan simpan base64 ke Firebase (terlalu besar & bisa ditolak)
+                            // URL foto asli akan diisi oleh GAS setelah upload ke Drive
+                            if (!rec['Foto'] || rec['Foto'] === '') rec['Foto'] = 'PENDING_UPLOAD';
                         }
 
                         if (!rec['ID']) {
