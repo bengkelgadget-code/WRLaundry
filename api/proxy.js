@@ -35,8 +35,15 @@ export default async function handler(req, res) {
             return res.status(405).json({ error: 'Method not allowed' });
         }
 
-        const data = await gasResponse.json();
-        return res.status(200).json(data);
+        // ZETTBOT FIX: Mencegah Vercel crash jika respon dari GAS bukan format JSON (misal HTML text)
+        const textData = await gasResponse.text();
+        try {
+            const data = JSON.parse(textData);
+            return res.status(200).json(data);
+        } catch (parseError) {
+            console.warn('Proxy warning: GAS response is not valid JSON. Returning raw text.');
+            return res.status(200).send(textData);
+        }
 
     } catch (error) {
         console.error('Proxy error:', error);
