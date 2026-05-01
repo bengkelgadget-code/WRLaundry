@@ -1144,10 +1144,17 @@ function updatePrinterStatusUI() {
     }
 }
 
-async function actionPrintReceipt() {
-    if(!currentSavedTx) return;
+async function actionPrintReceipt(idOverride) {
+    var id = idOverride || currentDetailId || (currentSavedTx ? currentSavedTx['ID'] : null);
+    if (!id) return;
+    
+    var tx = (appData.produksi || []).find(function(x) { return String(x['ID']) === String(id); });
+    if (!tx) tx = currentSavedTx;
+    if (!tx) { showToast("Data struk tidak ditemukan", "error"); return; }
 
-    if (navigator.bluetooth) {
+    var isWebBluetoothSupported = (navigator.bluetooth && window.isSecureContext);
+
+    if (isWebBluetoothSupported) {
         try {
             var btDevice = window.zettConnectedPrinter;
             
@@ -1186,7 +1193,7 @@ async function actionPrintReceipt() {
             for (var j=0; j<charUuids.length; j++) { try { characteristic = await service.getCharacteristic(charUuids[j]); if(characteristic) break; } catch(e) {} }
             if (!characteristic) throw new Error("Karakteristik Bluetooth Printer tidak cocok.");
 
-            var str = generateRawTextReceipt(currentSavedTx);
+            var str = generateRawTextReceipt(tx);
             var encoder = new TextEncoder();
             var bytes = encoder.encode(str);
 
@@ -1196,9 +1203,9 @@ async function actionPrintReceipt() {
             }
 
             showToast("Nota berhasil dicetak langsung ke Mesin!");
-            
             setTimeout(function() { btDevice.gatt.disconnect(); }, 2000);
-            return; 
+            
+            return; // ZETTBOT FIX: Berhenti di sini jika sukses, jangan lanjut ke PDF
 
         } catch(e) {
             console.error("Web Bluetooth Error:", e);
@@ -1207,35 +1214,28 @@ async function actionPrintReceipt() {
             
             if (e.name === 'NotFoundError') {
                 showToast("Cetak dibatalkan pengguna.", "error");
-                return;
+                return; // ZETTBOT FIX: Jika batal, hentikan! Jangan ke PDF.
             } else if (e.name === 'NotSupportedError') {
-                showToast("Perangkat ini memblokir cetak langsung. Beralih ke mode Sistem/RawBT.", "warning");
+                showToast("Perangkat ini memblokir cetak langsung.", "warning");
             } else {
-                showToast("Gagal Terhubung: " + e.message + ". Beralih ke mode Sistem/RawBT.", "error");
+                showToast("Gagal Terhubung: " + e.message, "error");
             }
         }
+    } else {
+        if (!window.isSecureContext) showToast("Bluetooth butuh akses HTTPS (Gunakan link Vercel)", "error");
+        else showToast("Perangkat tidak support Web Bluetooth", "error");
     }
 
-    setTimeout(function() { 
-        document.getElementById('print-area').innerHTML = generateReceiptHTML(currentSavedTx); 
-        window.print(); 
-        
-        setTimeout(function() {
-            zettConfirm("Informasi Mode Cetak", "Jika di layar Anda malah muncul 'Simpan sebagai PDF', tekan tulisan tersebut lalu pilih 'Semua Printer' dan pilih nama Printer Thermal Anda. \n\n(Catatan: Jika nama printernya tidak ada, Anda wajib menginstal aplikasi 'RawBT' di PlayStore agar Android Anda mengenali printer kasir).", "info", function(){});
-        }, 1000);
-    }, 500); 
+    // ZETTBOT FIX: Tanyakan dulu sebelum dialihkan ke PDF / Mode Sistem (RawBT)
+    zettConfirm("Gunakan Mode Cetak Sistem?", "Bluetooth browser gagal/tidak support.\n\nSistem akan mengalihkan ke mode cetak sistem. Jika layar menampilkan 'Simpan sebagai PDF', ubah tujuan printer ke nama Printer Bluetooth Anda.\n\n(Pastikan aplikasi RawBT terinstall dari PlayStore).", "info", function() {
+        setTimeout(function() { 
+            document.getElementById('print-area').innerHTML = generateReceiptHTML(tx); 
+            window.print(); 
+        }, 500); 
+    });
 }
 
-document.addEventListener('input', e => {
-    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-        try {
-            var inputType = e.target.type ? e.target.type.toLowerCase() : 'text';
-            if (inputType === 'file' || inputType === 'password' || inputType === 'email' || inputType === 'number' || inputType === 'date' || inputType === 'time' || inputType === 'range' || inputType === 'checkbox' || inputType === 'radio') return;
-        } catch(typeErr) { return; }
-        
-        if (e.target.closest('#modal-users') || e.target.closest('#login-overlay')) return;
-        
-        try {
+// FIX: Hindari Error "InvalidStateError" di Input File & input type khusus!
             var oldVal = e.target.value;
             var newVal = oldVal.toUpperCase();
             
