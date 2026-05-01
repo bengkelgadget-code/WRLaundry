@@ -702,6 +702,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     newData.pelanggan = cleanPhoneQuotes(newData.pelanggan);
                 }
                 
+                // FIX: Jangan replace total - merge produksi agar data baru yang belum di-cloud tidak hilang
+                if (typeof mergeProduksiData === 'function') {
+                    newData.produksi = mergeProduksiData(newData.produksi);
+                }
                 appData = newData;
                 
                 if (isLoggedIn) {
