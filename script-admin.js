@@ -7,7 +7,14 @@
 function resolvePelanggan(id, fallbackData) {
     var cust = (appData.pelanggan || []).find(function(c) { return String(c['ID']) === String(id); });
     if (cust) return { nama: cust['Nama Pelanggan'], hp: cust['No Telpon'] };
+    
+    // Fallback 1: Jika data transaksi (row) di-passing langsung
     if (fallbackData && fallbackData['Nama Pelanggan']) return { nama: fallbackData['Nama Pelanggan'], hp: fallbackData['No Telpon'] || '-' };
+    
+    // ZETTBOT SUPER FALLBACK: Mencegah 'Unknown' di halaman Kasir (script-pos) yang mungkin tidak mengirimkan fallbackData
+    var prodFallback = (appData.produksi || []).find(function(tx) { return String(tx['ID Pelanggan']) === String(id) && tx['Nama Pelanggan']; });
+    if (prodFallback) return { nama: prodFallback['Nama Pelanggan'], hp: prodFallback['No Telpon'] || '-' };
+    
     return { nama: 'Unknown / Dihapus', hp: '-' };
 }
 
@@ -194,7 +201,7 @@ function renderTable(sheetName, keepPage) {
         displayData = displayData.filter(function(row) {
             var text = Object.values(row).map(function(v) { return String(v).toLowerCase(); }).join(' ');
             if(sheetName === 'Produksi') { 
-                var c = resolvePelanggan(row['ID Pelanggan']); 
+                var c = resolvePelanggan(row['ID Pelanggan'], row); 
                 text += ' ' + c.nama.toLowerCase() + ' ' + c.hp.toLowerCase() + ' ' + resolveLayananNameForProduksi(row['Layanan']).toLowerCase(); 
             }
             return text.includes(searchTerm);
@@ -255,7 +262,7 @@ function renderTable(sheetName, keepPage) {
     paginatedData.forEach(function(row) {
         var htmlTr = '<tr>';
         if (sheetName === 'Produksi') {
-            var cust = resolvePelanggan(row['ID Pelanggan']);
+            var cust = resolvePelanggan(row['ID Pelanggan'], row);
             var statusBadge = '';
             if(row['Status'] === 'Proses') { 
                 statusBadge = '<span class="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200 shadow-sm"><i class="ph-bold ph-spinner-gap animate-spin inline-block mr-1"></i>Proses</span>'; 
@@ -370,7 +377,7 @@ function updateDashboard() {
         tbody.innerHTML = '<tr><td colspan="4" class="py-6 px-3 text-center text-slate-400 italic font-normal border-0">Belum ada transaksi terakhir.</td></tr>'; 
     } else {
         last5.forEach(function(row) {
-            var cust = resolvePelanggan(row['ID Pelanggan']); 
+            var cust = resolvePelanggan(row['ID Pelanggan'], row); 
             var stColor = '';
             
             if(row['Status'] === 'Proses') { 
