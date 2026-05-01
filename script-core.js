@@ -397,9 +397,10 @@ var masterConfig = {
     'Users': { id: 'users', title: 'Manajemen User', fields: [{name: 'Username', type: 'text'}, {name: 'Nama Lengkap', type: 'text'}, {name: 'Password', type: 'password'}, {name: 'Role', type: 'select', options: ['ADMIN', 'STAFF']}] }
 };
 
-function resolvePelanggan(id) {
+function resolvePelanggan(id, fallbackData) {
     var cust = (appData.pelanggan || []).find(function(c) { return c && String(c['ID']) === String(id); });
     if (cust) return { nama: cust['Nama Pelanggan'], hp: cust['No Telpon'] };
+    if (fallbackData && fallbackData['Nama Pelanggan']) return { nama: fallbackData['Nama Pelanggan'], hp: fallbackData['No Telpon'] || '-' };
     return { nama: 'Unknown / Dihapus', hp: '-' };
 }
 
