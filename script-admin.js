@@ -5,16 +5,46 @@
 
 // ZETTBOT FIX: Mengamankan Helper Pelanggan & Layanan agar Dashboard tidak crash
 function resolvePelanggan(id, fallbackData) {
-    var cust = (appData.pelanggan || []).find(function(c) { return String(c['ID']) === String(id); });
-    if (cust) return { nama: cust['Nama Pelanggan'], hp: cust['No Telpon'] };
+    var idStr = String(id || '').trim();
+    var rowObj = fallbackData;
     
-    // Fallback 1: Jika data transaksi (row) di-passing langsung
-    if (fallbackData && fallbackData['Nama Pelanggan']) return { nama: fallbackData['Nama Pelanggan'], hp: fallbackData['No Telpon'] || '-' };
-    
-    // ZETTBOT SUPER FALLBACK: Mencegah 'Unknown' di halaman Kasir (script-pos) yang mungkin tidak mengirimkan fallbackData
-    var prodFallback = (appData.produksi || []).find(function(tx) { return String(tx['ID Pelanggan']) === String(id) && tx['Nama Pelanggan']; });
-    if (prodFallback) return { nama: prodFallback['Nama Pelanggan'], hp: prodFallback['No Telpon'] || '-' };
-    
+    // 1. ZETTBOT FIX: Auto-Detect jika argumen 'id' adalah objek row itu sendiri
+    if (id !== null && typeof id === 'object') {
+        rowObj = id;
+        idStr = String(rowObj['ID Pelanggan'] || '').trim();
+    }
+
+    // 2. Prioritas Tertinggi: Ambil dari fallbackData / baris transaksi (Sangat Ampuh Anti-Delay Firebase)
+    if (rowObj && rowObj['Nama Pelanggan'] && String(rowObj['Nama Pelanggan']).trim() !== '' && String(rowObj['Nama Pelanggan']).trim() !== 'undefined') {
+        return { 
+            nama: rowObj['Nama Pelanggan'], 
+            hp: rowObj['No Telpon'] || '-' 
+        };
+    }
+
+    if (idStr !== '' && idStr !== 'undefined' && idStr !== 'null') {
+        // 3. Cari di Master Data Pelanggan
+        var cust = (appData.pelanggan || []).find(function(c) { return c && String(c['ID']).trim() === idStr; });
+        if (cust && cust['Nama Pelanggan'] && String(cust['Nama Pelanggan']).trim() !== '') {
+            return { nama: cust['Nama Pelanggan'], hp: cust['No Telpon'] || '-' };
+        }
+        
+        // 4. ZETTBOT SUPER FALLBACK: Cari di riwayat Produksi yang punya ID Pelanggan sama
+        var prodFallback = (appData.produksi || []).find(function(tx) { return tx && String(tx['ID Pelanggan']).trim() === idStr && tx['Nama Pelanggan'] && String(tx['Nama Pelanggan']).trim() !== '' && String(tx['Nama Pelanggan']).trim() !== 'undefined'; });
+        if (prodFallback) {
+            return { nama: prodFallback['Nama Pelanggan'], hp: prodFallback['No Telpon'] || '-' };
+        }
+        
+        // 5. Jika ID tersimpan sebagai Nama secara tidak sengaja
+        var checkDirectName = (appData.pelanggan || []).find(function(c) { return c && String(c['Nama Pelanggan']).trim().toUpperCase() === idStr.toUpperCase(); });
+        if (checkDirectName && checkDirectName['Nama Pelanggan']) {
+            return { nama: checkDirectName['Nama Pelanggan'], hp: checkDirectName['No Telpon'] || '-' };
+        }
+        
+        // 6. Jika tidak ditemukan di mana pun, tampilkan ID agar tidak sekedar 'Unknown'
+        return { nama: 'Pelanggan (' + idStr + ')', hp: '-' };
+    }
+
     return { nama: 'Unknown / Dihapus', hp: '-' };
 }
 
