@@ -1,7 +1,7 @@
 // ZETTBOT HYBRID ENGINE: Auto-Switch Backend & Firebase RTDB
 // ====================================================================
 // PERHATIAN: Masukkan URL Web App (hasil deploy GAS terbaru) Anda di sini!
-const GAS_URL = "https://script.google.com/macros/s/AKfycbw4LsV2mB_x517QfNxQtA4AQmdYzyaUNPp0KCcC1F-_o-0wJtUaKYvdlqKmZcWBKq4Cyw/exec"; 
+const GAS_URL = "/api/proxy"; // Proxy Vercel - bypass CORS GAS
 
 const firebaseConfig = {
     apiKey: "AIzaSyBbTTYAroluZ3UYMPgnoxLYn1aqPFq9Wik",
