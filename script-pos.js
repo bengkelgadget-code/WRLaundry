@@ -1086,12 +1086,25 @@ function generateRawTextReceipt(px) {
     var items = []; var subtotalTx = Number(px['Total Harga'] || 0); var diskonTx = 0;
     if (px['Detail Layanan JSON']) { try { var parsed = JSON.parse(px['Detail Layanan JSON']); items = Array.isArray(parsed) ? parsed : (parsed.items || []); diskonTx = parsed.diskon || 0; } catch(e) {} }
 
+    var allSameDate = true; var firstDate = items.length > 0 ? (items[0].estimasiSelesai ? String(items[0].estimasiSelesai).split(' - ')[0].split(' ')[0] : '') : '';
+    for(var i=1; i<items.length; i++){ var currEst = items[i].estimasiSelesai ? String(items[i].estimasiSelesai).split(' - ')[0].split(' ')[0] : ''; if(currEst !== firstDate){ allSameDate = false; break; } }
+
+    if (allSameDate && firstDate) {
+        str += "Selesai  : " + firstDate + "\n";
+    }
+    str += "--------------------------------\n";
+
     if (items.length > 0) {
         items.forEach(function(item, index) {
             str += item.nama + "\n";
             var line2 = item.qty + " " + item.satuan + " x " + Number(item.subtotal/item.qty).toLocaleString('id-ID');
             var val2 = "Rp " + Number(item.subtotal).toLocaleString('id-ID');
             str += splitKV(line2, val2);
+            
+            var itemEst = item.estimasiSelesai ? String(item.estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
+            if (!allSameDate && itemEst) {
+                str += "Selesai: " + itemEst + "\n";
+            }
             if (index < items.length - 1) { str += "\n"; }
         });
     } else { str += (px['Layanan'] || '').replace(/\+/g, '\n\n') + "\n"; } 
@@ -1188,19 +1201,30 @@ function actionSendWA(idOverride) {
         txt += 'Tgl Masuk: *' + tglMasuk + '*\n\n';
         
         txt += '🧺 *RINCIAN LAYANAN*\n';
+        
+        var allSameDate = true; var firstDate = items.length > 0 ? (items[0].estimasiSelesai ? String(items[0].estimasiSelesai).split(' - ')[0].split(' ')[0] : '') : '';
+        for(var i=1; i<items.length; i++){ var currEst = items[i].estimasiSelesai ? String(items[i].estimasiSelesai).split(' - ')[0].split(' ')[0] : ''; if(currEst !== firstDate){ allSameDate = false; break; } }
+        
+        if (allSameDate && firstDate) {
+            txt += 'Estimasi Selesai: *' + firstDate + '*\n\n';
+        }
+
         if (items.length > 0) {
             items.forEach(function(item) {
+                var itemEst = item.estimasiSelesai ? String(item.estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
+                var estStr = (!allSameDate && itemEst) ? '\n  Selesai: _' + itemEst + '_' : '';
+                
                 if (pmbStatus === 'Potong Kuota' && item.satuan === 'Kg') {
-                    txt += '- ' + item.nama + ' (' + item.qty + ' ' + item.satuan + ')\n';
+                    txt += '- ' + item.nama + ' (' + item.qty + ' ' + item.satuan + ')' + estStr + '\n\n';
                 } else {
-                    txt += '- ' + item.nama + ' (' + item.qty + ' ' + item.satuan + ' x ' + Number(item.subtotal/item.qty).toLocaleString('id-ID') + ') = Rp ' + Number(item.subtotal).toLocaleString('id-ID') + '\n';
+                    txt += '- ' + item.nama + ' (' + item.qty + ' ' + item.satuan + ' x ' + Number(item.subtotal/item.qty).toLocaleString('id-ID') + ') = Rp ' + Number(item.subtotal).toLocaleString('id-ID') + estStr + '\n\n';
                 }
             });
         } else {
-            txt += '- ' + (tx['Layanan'] || '').replace(/\+/g, '\n- ') + '\n';
+            txt += '- ' + (tx['Layanan'] || '').replace(/\+/g, '\n\n- ') + '\n\n';
         }
         
-        txt += '\n======================\n';
+        txt += '======================\n';
         if (pmbStatus !== 'Potong Kuota' || totalHarga > 0) {
             if (items.length > 0) txt += 'Subtotal: Rp ' + Number(subtotalTx).toLocaleString('id-ID') + '\n';
             if (diskonTx > 0) txt += 'Diskon: - Rp ' + diskonTx.toLocaleString('id-ID') + '\n';
