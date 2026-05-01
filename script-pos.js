@@ -158,7 +158,7 @@ function renderStaffTable(keepPage) {
     }
 }
 
-// ZETTBOT FIX: Simplify TomSelect for new items (Support Auto-Create on Tab/Enter)
+// ZETTBOT FIX: Simplify TomSelect for new items (Support Auto-Create on Tab/Enter natively)
 function initCustomerAutocomplete() {
     if (typeof TomSelect === 'undefined') return;
     
@@ -186,15 +186,15 @@ function initCustomerAutocomplete() {
                 searchField: ['nama', 'hp'], 
                 options: JSON.parse(JSON.stringify(custOptions)), 
                 maxItems: 1, 
+                
+                // ZETTBOT FIX: Gunakan fitur bawaan createOnBlur dan hilangkan onKeyDown kustom
                 create: function(input) {
                     var upInput = input.toUpperCase();
                     return { id: 'AUTO', nama: upInput, hp: upInput };
                 }, 
-                createOnBlur: true, // ZETTBOT FIX: Allow Save on Blur/Tab automatically
+                createOnBlur: true, 
                 persist: false, 
-                selectOnTab: true, 
-                openOnFocus: true,
-                shouldLoad: function(query) { return true; }, 
+                
                 placeholder: isNama ? 'Ketik nama pelanggan...' : 'Ketik no HP...',
                 
                 sortField: [{field: '$score', direction: 'desc'}],
@@ -228,7 +228,10 @@ function initCustomerAutocomplete() {
                         return '<div class="create py-2 px-3 text-sm border-b border-slate-50">Tambah baru: <strong class="text-teal-600">' + escape(data.input) + '</strong></div>'; 
                     }
                 },
+                
                 onChange: function(value) {
+                    if (isFormPopulating) return; // ZETTBOT: Blokir trigger saat auto-populate Edit
+                    
                     try {
                         validateStaffForm(); 
                         var targetId = isNama ? 'staff-input-hp' : 'staff-input-nama';
@@ -245,7 +248,6 @@ function initCustomerAutocomplete() {
                             return; 
                         }
                         
-                        // ZETTBOT FIX: Use this.options to find dynamically created options too!
                         var match = this.options[value];
                         
                         if (match) {
@@ -254,7 +256,6 @@ function initCustomerAutocomplete() {
                                 var valToSet = isNama ? match.hp : match.nama; 
                                 companionTs.setValue(valToSet, true); 
                                 
-                                // Disable companion ONLY if it's an existing customer. Leave enabled for NEW customer.
                                 if (match.id !== 'AUTO') {
                                     companionTs.disable();
                                 } else {
@@ -283,35 +284,19 @@ function initCustomerAutocomplete() {
                                     }
                                 }
                                 infoEl.innerHTML = '<i class="ph-fill ph-diamond text-lg"></i> <span>Paket <b>' + paketName + '</b> | Sisa Kuota <b>' + sisaKuota + ' Kg</b></span>'; infoEl.classList.remove('hidden'); infoEl.classList.add('flex');
-                                if (pmbInput && !window.isEditTxMode && !isFormPopulating) { pmbInput.value = 'Potong Kuota'; handlePembayaranChange(); }
+                                if (pmbInput && !window.isEditTxMode) { pmbInput.value = 'Potong Kuota'; handlePembayaranChange(); }
                             } else {
                                 togglePotongKuotaOption(false, false);
                                 infoEl.classList.add('hidden'); infoEl.classList.remove('flex');
                             }
-                            if (!isFormPopulating) calcStaffTotalAll(); 
-
-                            this.close();
-                            setTimeout(function() { 
-                                if(tsInstances['staff-srv-select-1'] && !isFormPopulating) { tsInstances['staff-srv-select-1'].focus(); } 
-                            }, 150);
+                            
+                            calcStaffTotalAll(); 
 
                         } else {
                             if (companionTs) { companionTs.enable(); }
                             document.getElementById('staff-member-info').classList.add('hidden'); 
                             document.getElementById('staff-member-info').classList.remove('flex'); 
                             togglePotongKuotaOption(false, false);
-                            
-                            this.close();
-                            
-                            setTimeout(function() { 
-                                if (isNama) {
-                                    if(companionTs && !isFormPopulating) { companionTs.focus(); } 
-                                } else {
-                                    if(tsInstances['staff-srv-select-1'] && !isFormPopulating) { 
-                                        tsInstances['staff-srv-select-1'].focus(); 
-                                    }
-                                }
-                            }, 150);
                         }
 
                     } catch(e) { console.error("Autocomplete Error: ", e); }
@@ -354,6 +339,7 @@ function attachPaymentScroll(inputId) {
 function openStaffModal() {
     window.isEditTxMode = false;
     window.currentEditTxData = null;
+    isFormPopulating = true; // Kunci sementara
 
     var modal = document.getElementById('modal-staff-tx'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
     
@@ -374,7 +360,7 @@ function openStaffModal() {
     }
 
     if(form) {
-        form.reset(); // ZETTBOT FIX: Gunakan fungsi bawaan JS untuk mereset inputan dengan rapi
+        form.reset(); 
     }
     
     document.getElementById('staff-foto-label').innerHTML = '<i class="ph-bold ph-camera text-3xl"></i>'; 
@@ -407,8 +393,17 @@ function openStaffModal() {
     attachPaymentScroll('staff-input-dp');
 
     try { initCustomerAutocomplete(); } catch(e) {}
+    
+    if(tsInstances['staff-input-nama']) { tsInstances['staff-input-nama'].clear(true); tsInstances['staff-input-nama'].enable(); }
+    if(tsInstances['staff-input-hp']) { tsInstances['staff-input-hp'].clear(true); tsInstances['staff-input-hp'].enable(); }
+    
     document.getElementById('staff-services-container').innerHTML = ''; staffServicesCount = 0; staffServicesData = {};
-    addStaffServiceRow(false); validateStaffForm(); setTimeout(function() { if(tsInstances['staff-input-nama']) { tsInstances['staff-input-nama'].focus(); } }, 300);
+    addStaffServiceRow(false); 
+    validateStaffForm(); 
+    
+    isFormPopulating = false; // Buka kunci
+
+    setTimeout(function() { if(tsInstances['staff-input-nama']) { tsInstances['staff-input-nama'].focus(); } }, 300);
 }
 
 // ZETTBOT PRO FIX: Agresif Populate Data untuk Edit Transaksi
@@ -430,6 +425,7 @@ function openTxDetail(id) {
 
     window.isEditTxMode = true;
     window.currentEditTxData = px;
+    isFormPopulating = true; // KUNCI AGAR TOMSELECT TIDAK BENTROK
 
     var modal = document.getElementById('modal-staff-tx'); 
     if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
@@ -449,9 +445,6 @@ function openTxDetail(id) {
     
     var statusContainer = document.getElementById('staff-status-container');
     if(statusContainer) statusContainer.classList.remove('hidden');
-    
-    // Setel mode populating agar fungsi onChange dan kalkulasi tidak bentrok
-    isFormPopulating = true;
     
     // Tunda sedikit agar form render dengan benar
     setTimeout(function() {
@@ -482,15 +475,16 @@ function openTxDetail(id) {
         if (txHp.startsWith("'")) txHp = txHp.substring(1);
         var txIdPelanggan = px['ID Pelanggan'] || 'AUTO';
 
+        // ZETTBOT FIX: Paksa Push Option dan Pilih
         if(tsInstances['staff-input-nama']) {
             tsInstances['staff-input-nama'].clear(true);
             tsInstances['staff-input-nama'].addOption({id: txIdPelanggan, nama: txNama, hp: txHp});
-            tsInstances['staff-input-nama'].setValue(txNama);
+            tsInstances['staff-input-nama'].setValue(txNama, true);
         }
         if(tsInstances['staff-input-hp']) {
             tsInstances['staff-input-hp'].clear(true);
             tsInstances['staff-input-hp'].addOption({id: txIdPelanggan, nama: txNama, hp: txHp});
-            tsInstances['staff-input-hp'].setValue(txHp);
+            tsInstances['staff-input-hp'].setValue(txHp, true);
         }
 
         var custDataForEdit = (appData.pelanggan || []).find(p => p && String(p['ID']) === String(px['ID Pelanggan']));
