@@ -1124,6 +1124,65 @@ function generateRawTextReceipt(px) {
 
 function showSuccessModal() { var modal = document.getElementById('modal-success-print'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); } }
 
+function actionSendWA(idOverride) {
+    var id = idOverride || currentDetailId || (currentSavedTx ? currentSavedTx['ID'] : null);
+    if (!id) return;
+    
+    var tx = (appData.produksi || []).find(function(x) { return String(x['ID']) === String(id); });
+    if (!tx) tx = currentSavedTx;
+    if (!tx) { showToast("Data struk tidak ditemukan", "error"); return; }
+
+    var cust = resolvePelanggan(tx['ID Pelanggan'], tx);
+    var phone = cust.hp;
+    
+    if (!phone || phone === '-' || phone === '') { 
+        showToast("No WA pelanggan tidak tersedia", "error"); 
+        return; 
+    }
+    
+    phone = phone.replace(/\D/g, ''); 
+    if (phone.startsWith('0')) {
+        phone = '62' + phone.substring(1);
+    }
+
+    var namaToko = typeof appSettings !== 'undefined' && appSettings.nama ? appSettings.nama : 'Waroenk Laundry';
+    var txt = '';
+
+    var sisaBayar = Number(tx['Sisa Bayar'] !== undefined ? tx['Sisa Bayar'] : (tx['Total Harga'] || 0));
+    var pmbStatus = tx['Pembayaran'] || 'Belum Lunas';
+
+    if (tx['Status'] === 'Selesai') {
+        txt = 'Halo Kak *' + cust.nama + '*,\n\n';
+        txt += 'Cucian kakak dengan No Nota *' + (tx['No Nota'] || tx['ID']) + '* sudah *SELESAI* dan siap untuk diambil di *' + namaToko + '*.\n\n';
+        txt += 'Total Tagihan: *Rp ' + Number(tx['Total Harga'] || 0).toLocaleString('id-ID') + '*\n';
+        txt += 'Status Pembayaran: *' + pmbStatus + '*\n';
+        if (pmbStatus !== 'Lunas' && pmbStatus !== 'Potong Kuota' && sisaBayar > 0) {
+            txt += 'Sisa Tagihan: *Rp ' + sisaBayar.toLocaleString('id-ID') + '*\n';
+        }
+        txt += '\nTerima kasih, ditunggu kedatangannya!';
+    } else {
+        txt = 'Halo Kak *' + cust.nama + '*,\n\n';
+        txt += 'Terima kasih telah mempercayakan cucian kakak di *' + namaToko + '*.\n\n';
+        txt += 'No Nota: *' + (tx['No Nota'] || tx['ID']) + '*\n';
+        
+        var detailLayanan = tx['Layanan'] || '';
+        if (typeof resolveLayananNameForProduksi === 'function') {
+            detailLayanan = resolveLayananNameForProduksi(tx['Layanan']);
+        }
+        txt += 'Layanan: *' + detailLayanan.replace(/\+/g, ', ') + '*\n';
+        txt += 'Total Tagihan: *Rp ' + Number(tx['Total Harga'] || 0).toLocaleString('id-ID') + '*\n';
+        txt += 'Status Pembayaran: *' + pmbStatus + '*\n';
+        if (pmbStatus !== 'Lunas' && pmbStatus !== 'Potong Kuota' && sisaBayar > 0) {
+            txt += 'Sisa Tagihan: *Rp ' + sisaBayar.toLocaleString('id-ID') + '*\n';
+        }
+        txt += 'Status Cucian: *' + (tx['Status'] || 'Proses') + '*\n\n';
+        txt += 'Kami akan mengabari kakak kembali jika cucian sudah selesai. Terima kasih!';
+    }
+
+    var url = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(txt);
+    window.open(url, '_blank');
+}
+
 window.zettConnectedPrinter = window.zettConnectedPrinter || null;
 
 async function connectPrinterManually() {
