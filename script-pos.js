@@ -398,7 +398,26 @@ function openStaffModal() {
         form.classList.remove('pb-12');
     }
 
-    if(form) form.reset(); 
+    if(form) {
+        // FIX: Reset manual per-elemen agar tidak trigger InvalidStateError pada input[type=file]
+        var allInputs = form.querySelectorAll('input, select, textarea');
+        allInputs.forEach(function(el) {
+            try {
+                var t = (el.type || '').toLowerCase();
+                if (t === 'file') {
+                    var clone = el.cloneNode(false);
+                    el.parentNode.replaceChild(clone, el);
+                    clone.addEventListener('change', function() { previewFileName(clone); });
+                } else if (t === 'checkbox' || t === 'radio') {
+                    el.checked = false;
+                } else if (el.tagName === 'SELECT') {
+                    el.selectedIndex = 0;
+                } else {
+                    el.value = '';
+                }
+            } catch(e) {}
+        });
+    }
     document.getElementById('staff-foto-label').innerHTML = '<i class="ph-bold ph-camera text-3xl"></i>'; 
     document.getElementById('staff-total-biaya-label').innerText = 'Total Biaya'; 
     document.getElementById('staff-total-biaya').innerText = 'Rp 0';
@@ -1191,23 +1210,28 @@ async function actionPrintReceipt() {
     }, 500); 
 }
 
-// ZETTBOT FIX: Hindari Error "InvalidStateError" di Input File!
+// FIX: Hindari Error "InvalidStateError" di Input File & input type khusus!
 document.addEventListener('input', e => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-        // Jangan pernah uppercase field file, password, email, atau angka!
-        if (e.target.type === 'file' || e.target.type === 'password' || e.target.type === 'email' || e.target.type === 'number') return;
+        // FIX: Abaikan semua input yang tidak support .value assignment atau selectionStart
+        try {
+            var inputType = e.target.type ? e.target.type.toLowerCase() : 'text';
+            if (inputType === 'file' || inputType === 'password' || inputType === 'email' || inputType === 'number' || inputType === 'date' || inputType === 'time' || inputType === 'range' || inputType === 'checkbox' || inputType === 'radio') return;
+        } catch(typeErr) { return; }
         
         if (e.target.closest('#modal-users') || e.target.closest('#login-overlay')) return;
         
-        var oldVal = e.target.value;
-        var newVal = oldVal.toUpperCase();
-        
-        if (oldVal !== newVal) {
-            var start = e.target.selectionStart;
-            e.target.value = newVal;
-            // Cegah error cursor-jump di beberapa HP
-            try { e.target.setSelectionRange(start, start); } catch(err) {} 
-        }
+        try {
+            var oldVal = e.target.value;
+            var newVal = oldVal.toUpperCase();
+            
+            if (oldVal !== newVal) {
+                var start = e.target.selectionStart;
+                e.target.value = newVal;
+                // Cegah error cursor-jump di beberapa HP
+                try { e.target.setSelectionRange(start, start); } catch(err) {} 
+            }
+        } catch(err) { /* Abaikan error pada input type yang tidak support value assignment */ }
     }
 });
 
