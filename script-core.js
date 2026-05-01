@@ -279,8 +279,11 @@ if (typeof google === 'undefined') {
                         
                         if (this._onSuccess) this._onSuccess({ success: true, message: "Transaksi Tersimpan Cepat!", data: appData.produksi, pelanggan: appData.pelanggan, notaInfo: rec });
                         
-                        fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload }) })
+                        var gasPayload = { recordObj: rec, fileData: (payload.fileData || null) };
+                        console.log("DEBUG polyfill fetch payload.recordObj keys:", Object.keys(gasPayload.recordObj || {}));
+                        fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveTransaksiStaff', payload: gasPayload }) })
                         .then(res => res.json()).then(resData => {
+                            console.log("DEBUG polyfill GAS response:", JSON.stringify(resData).substring(0,200));
                             if (resData.success) {
                                 if (resData.data) appData.produksi = mergeProduksiData(resData.data); 
                                 if (resData.pelanggan) appData.pelanggan = cleanPhoneQuotes(resData.pelanggan);
