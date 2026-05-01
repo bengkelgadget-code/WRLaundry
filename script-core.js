@@ -123,7 +123,11 @@ if (typeof google === 'undefined') {
                                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                                 body: JSON.stringify({ action: 'getInitialData', payload: {} }) 
                             })
-                            .then(res => res.json())
+                            // ZETTBOT FIX: Hindari Error Valid JSON Jika HTTP 500
+                            .then(res => {
+                                if (!res.ok) throw new Error("HTTP Error " + res.status);
+                                return res.json();
+                            })
                             .then(data => {
                                 if(data && data.produksi) { 
                                     data.produksi = mergeProduksiData(data.produksi);
@@ -159,7 +163,11 @@ if (typeof google === 'undefined') {
                         if (this._onSuccess) this._onSuccess({ success: true, message: "Data Tersimpan (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
                         
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
-                        .then(res => res.json()).then(resData => {
+                        // ZETTBOT FIX: Hindari Error Valid JSON Jika HTTP 500
+                        .then(res => {
+                            if (!res.ok) throw new Error("HTTP Error " + res.status);
+                            return res.json();
+                        }).then(resData => {
                             if (resData.success && resData.data) {
                                 appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
                                 if(resData.pelanggan) appData.pelanggan = cleanPhoneQuotes(resData.pelanggan);
@@ -168,7 +176,7 @@ if (typeof google === 'undefined') {
                                 if(typeof window.renderTable === 'function') window.renderTable(sheet, true);
                                 if(typeof window.updateAllDropdowns === 'function') window.updateAllDropdowns();
                             }
-                        }).catch(e => {});
+                        }).catch(e => { console.warn("Sync terganggu: " + e.message); });
                         return this;
                     },
 
@@ -182,7 +190,11 @@ if (typeof google === 'undefined') {
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Data Diupdate (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
                         
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateRecord', payload: {sheetName: sheet, id: id, data: data} }) })
-                        .then(res => res.json()).then(resData => {
+                        // ZETTBOT FIX: Hindari Error Valid JSON Jika HTTP 500
+                        .then(res => {
+                            if (!res.ok) throw new Error("HTTP Error " + res.status);
+                            return res.json();
+                        }).then(resData => {
                             if (resData.success && resData.data) { 
                                 appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
                                 if(resData.pelanggan) appData.pelanggan = cleanPhoneQuotes(resData.pelanggan); 
@@ -191,7 +203,7 @@ if (typeof google === 'undefined') {
                                 if(typeof window.renderTable === 'function') window.renderTable(sheet, true);
                                 if(typeof window.updateAllDropdowns === 'function') window.updateAllDropdowns();
                             }
-                        }).catch(e => {});
+                        }).catch(e => { console.warn("Sync terganggu: " + e.message); });
                         return this;
                     },
 
@@ -204,7 +216,11 @@ if (typeof google === 'undefined') {
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Terhapus (Instan)!", data: appData[key] });
                         
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'deleteRecord', payload: {sheetName: sheet, id: id} }) })
-                        .then(res => res.json()).then(resData => {
+                        // ZETTBOT FIX: Hindari Error Valid JSON Jika HTTP 500
+                        .then(res => {
+                            if (!res.ok) throw new Error("HTTP Error " + res.status);
+                            return res.json();
+                        }).then(resData => {
                             if (resData.success && resData.data) { 
                                 appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
                                 if(resData.pelanggan) appData.pelanggan = cleanPhoneQuotes(resData.pelanggan); 
@@ -213,7 +229,7 @@ if (typeof google === 'undefined') {
                                 if(typeof window.renderTable === 'function') window.renderTable(sheet, true);
                                 if(typeof window.updateAllDropdowns === 'function') window.updateAllDropdowns();
                             }
-                        }).catch(e => {});
+                        }).catch(e => { console.warn("Sync terganggu: " + e.message); });
                         return this;
                     },
 
@@ -286,7 +302,11 @@ if (typeof google === 'undefined') {
                         var gasPayload = { recordObj: rec, fileData: (payload.fileData || null) };
                         console.log("DEBUG polyfill fetch payload.recordObj keys:", Object.keys(gasPayload.recordObj || {}));
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveTransaksiStaff', payload: gasPayload }) })
-                        .then(res => res.json()).then(resData => {
+                        // ZETTBOT FIX: Hindari Error Valid JSON Jika HTTP 500
+                        .then(res => {
+                            if (!res.ok) throw new Error("HTTP Error " + res.status);
+                            return res.json();
+                        }).then(resData => {
                             console.log("DEBUG polyfill GAS response:", JSON.stringify(resData).substring(0,200));
                             if (resData.success) {
                                 if (resData.data) appData.produksi = mergeProduksiData(resData.data); 
@@ -307,7 +327,11 @@ if (typeof google === 'undefined') {
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Status Diperbarui!", data: appData.produksi });
                         
                         fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateStatusProduksi', payload: {id: id, status: status, pmbStatus: pmbStatus} }) })
-                        .then(res => res.json()).then(resData => {
+                        // ZETTBOT FIX: Hindari Error Valid JSON Jika HTTP 500
+                        .then(res => {
+                            if (!res.ok) throw new Error("HTTP Error " + res.status);
+                            return res.json();
+                        }).then(resData => {
                             if (resData.success && resData.data) { 
                                 appData.produksi = mergeProduksiData(resData.data); 
                                 if(database) database.ref('appData').set(sanitizeFbKeys(appData)); 
@@ -315,7 +339,7 @@ if (typeof google === 'undefined') {
                                 if (typeof window.renderStaffTable === 'function') window.renderStaffTable(true);
                                 if (typeof window.renderTable === 'function') window.renderTable('Produksi', true);
                             }
-                        }).catch(e => console.error(e));
+                        }).catch(e => console.error("Sync Status Terganggu: ", e.message));
                         return this;
                     },
 
@@ -326,7 +350,11 @@ if (typeof google === 'undefined') {
                                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                                 body: JSON.stringify({ action: 'getInitialData', payload: {} }) 
                             })
-                            .then(res => res.json())
+                            // ZETTBOT FIX: Menambahkan proteksi res.ok untuk membuang error text HTML
+                            .then(res => {
+                                if (!res.ok) throw new Error("HTTP Error " + res.status);
+                                return res.json();
+                            })
                             .then(data => {
                                 if(data && data.produksi && database) {
                                     data.produksi = mergeProduksiData(data.produksi);
@@ -345,7 +373,7 @@ if (typeof google === 'undefined') {
                                     console.log("✅ Background sync (POST fallback) sukses!");
                                 }
                             })
-                            .catch(e => console.log("Background sync (POST) terganggu.", e));
+                            .catch(e => console.log("Background sync (POST) terganggu: " + e.message));
                         };
 
                         fetch(GAS_URL + "?action=getInitialData&t=" + new Date().getTime(), { method: 'GET' })
@@ -375,7 +403,7 @@ if (typeof google === 'undefined') {
                             } 
                         })
                         .catch(e => {
-                            console.warn("Background sync GET terganggu, mencoba POST fallback...", e);
+                            console.warn("Background sync GET terganggu, mencoba POST fallback...", e.message);
                             syncPostFallback();
                         });
                     }
