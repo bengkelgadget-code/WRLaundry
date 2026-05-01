@@ -158,6 +158,7 @@ function renderStaffTable(keepPage) {
     }
 }
 
+// ZETTBOT FIX: Simplify TomSelect for new items (Support Auto-Create on Tab/Enter)
 function initCustomerAutocomplete() {
     if (typeof TomSelect === 'undefined') return;
     
@@ -187,12 +188,9 @@ function initCustomerAutocomplete() {
                 maxItems: 1, 
                 create: function(input) {
                     var upInput = input.toUpperCase();
-                    var newOpt = { id: 'AUTO' };
-                    newOpt[isNama ? 'nama' : 'hp'] = upInput;
-                    newOpt[!isNama ? 'nama' : 'hp'] = upInput;
-                    return newOpt;
+                    return { id: 'AUTO', nama: upInput, hp: upInput };
                 }, 
-                createOnBlur: false, 
+                createOnBlur: true, // ZETTBOT FIX: Allow Save on Blur/Tab automatically
                 persist: false, 
                 selectOnTab: true, 
                 openOnFocus: true,
@@ -204,10 +202,8 @@ function initCustomerAutocomplete() {
                     return function(item) {
                         var term = search.toLowerCase().trim();
                         if (!term) return 1; 
-                        
                         var n = String(item.nama || '').toLowerCase().trim();
                         var h = String(item.hp || '').toLowerCase().trim();
-                        
                         if (n.indexOf(term) === -1 && h.indexOf(term) === -1) return 0;
                         if (n === term || h === term) return 100;
                         if (n.startsWith(term) || h.startsWith(term)) return 50;
@@ -215,51 +211,9 @@ function initCustomerAutocomplete() {
                     };
                 },
 
-                onBlur: function() {
-                    var currentInput = this.control_input.value.trim().toUpperCase();
-                    if (currentInput && this.items.length === 0) {
-                        var visibleOpts = Array.from(this.dropdown_content.querySelectorAll('.option:not(.create)')).filter(function(el) { return el.style.display !== 'none'; });
-                        if (visibleOpts.length > 0) {
-                            var val = visibleOpts[0].getAttribute('data-value');
-                            if (val) { this.setValue(val); return; }
-                        }
-                        this.createItem(currentInput);
-                    }
-                },
-
-                onKeyDown: function(e) {
-                    if(e.key === 'Tab' || e.key === 'Enter' || e.keyCode === 13) {
-                        e.preventDefault();
-                        var currentInput = this.control_input.value.trim().toUpperCase();
-
-                        if(this.isOpen) {
-                            var targetOpt = this.activeOption;
-                            if (!targetOpt || !targetOpt.classList.contains('active')) { 
-                                var visibleOpts = Array.from(this.dropdown_content.querySelectorAll('.option:not(.create)')).filter(function(el) { return el.style.display !== 'none'; });
-                                if (visibleOpts.length > 0) { 
-                                    targetOpt = visibleOpts[0]; 
-                                } else { 
-                                    targetOpt = this.dropdown_content.querySelector('.create'); 
-                                } 
-                            }
-                            
-                            if (targetOpt) {
-                                var val = targetOpt.getAttribute('data-value');
-                                if (targetOpt.classList.contains('create')) { 
-                                    if(currentInput) { this.createItem(currentInput); } 
-                                } else if (val) { 
-                                    this.setValue(val); 
-                                }
-                            }
-                        } else if (currentInput && this.items.length === 0) {
-                            this.createItem(currentInput);
-                        }
-                        this.close(); this.blur(); 
-                    }
-                },
                 render: { 
                     option: function(item, escape) { 
-                        var isNew = (item.id === undefined || item.id === 'AUTO' || !item.hp || !item.nama);
+                        var isNew = (item.id === undefined || item.id === 'AUTO');
                         if (isNew) { 
                             var val = escape(isNama ? item.nama : item.hp); 
                             return '<div class="py-2 px-3 border-b border-slate-50 text-sm">Tambah baru: <strong class="text-teal-600">' + val + '</strong></div>'; 
@@ -277,7 +231,6 @@ function initCustomerAutocomplete() {
                 onChange: function(value) {
                     try {
                         validateStaffForm(); 
-                        
                         var targetId = isNama ? 'staff-input-hp' : 'staff-input-nama';
                         var companionTs = tsInstances[targetId];
 
@@ -292,17 +245,24 @@ function initCustomerAutocomplete() {
                             return; 
                         }
                         
-                        var match = isNama ? custOptions.find(function(c) { return c.nama === value; }) : custOptions.find(function(c) { return c.hp === value; });
+                        // ZETTBOT FIX: Use this.options to find dynamically created options too!
+                        var match = this.options[value];
                         
                         if (match) {
                             if (companionTs) { 
-                                companionTs.addOption({id: match.id, hp: match.hp, nama: match.nama}); 
+                                companionTs.addOption(match); 
                                 var valToSet = isNama ? match.hp : match.nama; 
                                 companionTs.setValue(valToSet, true); 
-                                companionTs.disable();
+                                
+                                // Disable companion ONLY if it's an existing customer. Leave enabled for NEW customer.
+                                if (match.id !== 'AUTO') {
+                                    companionTs.disable();
+                                } else {
+                                    companionTs.enable();
+                                }
                             }
                             
-                            var realCust = (appData.pelanggan || []).find(function(p) { return p['ID'] === match.id; }); 
+                            var realCust = (appData.pelanggan || []).find(function(p) { return String(p['ID']) === String(match.id); }); 
                             var infoEl = document.getElementById('staff-member-info'); 
                             var pmbInput = document.getElementById('staff-input-pembayaran');
                             
@@ -328,7 +288,7 @@ function initCustomerAutocomplete() {
                                 togglePotongKuotaOption(false, false);
                                 infoEl.classList.add('hidden'); infoEl.classList.remove('flex');
                             }
-                            if (!isFormPopulating) { calcStaffTotalAll(); }
+                            if (!isFormPopulating) calcStaffTotalAll(); 
 
                             this.close();
                             setTimeout(function() { 
@@ -345,13 +305,10 @@ function initCustomerAutocomplete() {
                             
                             setTimeout(function() { 
                                 if (isNama) {
-                                    if(companionTs) { companionTs.focus(); } 
+                                    if(companionTs && !isFormPopulating) { companionTs.focus(); } 
                                 } else {
-                                    if(tsInstances['staff-srv-select-1']) { 
+                                    if(tsInstances['staff-srv-select-1'] && !isFormPopulating) { 
                                         tsInstances['staff-srv-select-1'].focus(); 
-                                    } else {
-                                        var fbEl = document.getElementById('staff-srv-select-1');
-                                        if (fbEl) fbEl.focus();
                                     }
                                 }
                             }, 150);
@@ -417,24 +374,9 @@ function openStaffModal() {
     }
 
     if(form) {
-        var allInputs = form.querySelectorAll('input, select, textarea');
-        allInputs.forEach(function(el) {
-            try {
-                var t = (el.type || '').toLowerCase();
-                if (t === 'file') {
-                    var clone = el.cloneNode(false);
-                    el.parentNode.replaceChild(clone, el);
-                    clone.addEventListener('change', function() { previewFileName(clone); });
-                } else if (t === 'checkbox' || t === 'radio') {
-                    el.checked = false;
-                } else if (el.tagName === 'SELECT') {
-                    el.selectedIndex = 0;
-                } else {
-                    el.value = '';
-                }
-            } catch(e) {}
-        });
+        form.reset(); // ZETTBOT FIX: Gunakan fungsi bawaan JS untuk mereset inputan dengan rapi
     }
+    
     document.getElementById('staff-foto-label').innerHTML = '<i class="ph-bold ph-camera text-3xl"></i>'; 
     document.getElementById('staff-total-biaya-label').innerText = 'Total Biaya'; 
     document.getElementById('staff-total-biaya').innerText = 'Rp 0';
@@ -450,13 +392,14 @@ function openStaffModal() {
     var diskonInput = document.getElementById('staff-input-diskon'); if (diskonInput) diskonInput.value = '';
     var dpContainer = document.getElementById('staff-dp-container'); if (dpContainer) dpContainer.classList.add('hidden');
     var memberInfo = document.getElementById('staff-member-info'); if (memberInfo) { memberInfo.classList.add('hidden'); memberInfo.classList.remove('flex'); }
+    
     var maxNum = 0; var d = new Date(); var day = ('0' + d.getDate()).slice(-2); var month = ('0' + (d.getMonth() + 1)).slice(-2); var year = String(d.getFullYear()).slice(-2); var prefix = 'WRL.' + day + month + year + '.';
     (appData.produksi||[]).forEach(function(row) { if(row['No Nota'] && row['No Nota'].startsWith(prefix)) { var parts = row['No Nota'].split('.'); if (parts.length > 2) { var n = parseInt(parts[2]); if(!isNaN(n) && n > maxNum) maxNum = n; } } });
     var notaInput = document.getElementById('staff-input-nota'); 
     if (notaInput) { 
         notaInput.value = prefix + String(maxNum+1).padStart(3,'0'); 
-        notaInput.disabled = true;
-        notaInput.classList.add('bg-slate-100', 'cursor-not-allowed', 'opacity-70');
+        notaInput.disabled = false;
+        notaInput.classList.remove('bg-slate-100', 'cursor-not-allowed', 'opacity-70');
     }
     
     attachPaymentScroll('staff-input-diskon');
@@ -468,7 +411,7 @@ function openStaffModal() {
     addStaffServiceRow(false); validateStaffForm(); setTimeout(function() { if(tsInstances['staff-input-nama']) { tsInstances['staff-input-nama'].focus(); } }, 300);
 }
 
-// ZETTBOT PRO FIX: Redesigned openTxDetail to load Full POS Edit Form Aggressively
+// ZETTBOT PRO FIX: Agresif Populate Data untuk Edit Transaksi
 function openTxDetail(id) {
     var px = appData.produksi.find(function(x) { return x && String(x['ID']) === String(id); });
     if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
@@ -507,57 +450,54 @@ function openTxDetail(id) {
     var statusContainer = document.getElementById('staff-status-container');
     if(statusContainer) statusContainer.classList.remove('hidden');
     
-    var statusSelect = document.getElementById('staff-input-status');
-    if(statusSelect) statusSelect.value = px['Status'] || 'Proses';
-
-    if(formStaff) {
-        var allInputs = formStaff.querySelectorAll('input:not([type="hidden"]), textarea');
-        allInputs.forEach(el => {
-            if(el.type !== 'file' && el.type !== 'checkbox' && el.type !== 'radio') el.value = '';
-        });
-    }
-
-    var notaInput = document.getElementById('staff-input-nota');
-    if(notaInput) {
-        notaInput.value = px['No Nota'] || '';
-        notaInput.disabled = true;
-        notaInput.classList.add('bg-slate-100', 'cursor-not-allowed', 'opacity-70');
-    }
-
-    var photoLabel = document.getElementById('staff-foto-label');
-    if (photoLabel) {
-        if (px['Foto'] && String(px['Foto']).startsWith('http')) {
-            photoLabel.innerHTML = '<img src="' + px['Foto'] + '" class="absolute inset-0 w-full h-full object-cover z-0 rounded-xl"><div class="absolute inset-0 bg-slate-900/50 flex items-center justify-center z-0 rounded-xl"><i class="ph-bold ph-pencil text-white drop-shadow-md text-2xl"></i></div>';
-        } else {
-            photoLabel.innerHTML = '<i class="ph-bold ph-camera text-3xl"></i>'; 
-        }
-    }
-
-    var txNama = px['Nama Pelanggan'] || '';
-    var txHp = px['No Telpon'] || '';
-    if (txHp.startsWith("'")) txHp = txHp.substring(1);
-    var txIdPelanggan = px['ID Pelanggan'] || 'AUTO';
-
-    if(tsInstances['staff-input-nama']) tsInstances['staff-input-nama'].clear(true);
-    if(tsInstances['staff-input-hp']) tsInstances['staff-input-hp'].clear(true);
-    document.getElementById('staff-services-container').innerHTML = '';
-    staffServicesCount = 0; staffServicesData = {};
-
-    // Penahan Populator
+    // Setel mode populating agar fungsi onChange dan kalkulasi tidak bentrok
+    isFormPopulating = true;
+    
+    // Tunda sedikit agar form render dengan benar
     setTimeout(function() {
-        isFormPopulating = true;
+        if(formStaff) formStaff.reset(); 
+
+        var statusSelect = document.getElementById('staff-input-status');
+        if(statusSelect) statusSelect.value = px['Status'] || 'Proses';
+
+        // Pastikan No Nota disuntikkan dan dikunci
+        var notaInput = document.getElementById('staff-input-nota');
+        if(notaInput) {
+            notaInput.value = px['No Nota'] || px['ID'] || '';
+            notaInput.disabled = true;
+            notaInput.classList.add('bg-slate-100', 'cursor-not-allowed', 'opacity-70');
+        }
+
+        var photoLabel = document.getElementById('staff-foto-label');
+        if (photoLabel) {
+            if (px['Foto'] && String(px['Foto']).startsWith('http')) {
+                photoLabel.innerHTML = '<img src="' + px['Foto'] + '" class="absolute inset-0 w-full h-full object-cover z-0 rounded-xl"><div class="absolute inset-0 bg-slate-900/50 flex items-center justify-center z-0 rounded-xl"><i class="ph-bold ph-pencil text-white drop-shadow-md text-2xl"></i></div>';
+            } else {
+                photoLabel.innerHTML = '<i class="ph-bold ph-camera text-3xl"></i>'; 
+            }
+        }
+
+        var txNama = px['Nama Pelanggan'] || '';
+        var txHp = px['No Telpon'] || '';
+        if (txHp.startsWith("'")) txHp = txHp.substring(1);
+        var txIdPelanggan = px['ID Pelanggan'] || 'AUTO';
 
         if(tsInstances['staff-input-nama']) {
+            tsInstances['staff-input-nama'].clear(true);
             tsInstances['staff-input-nama'].addOption({id: txIdPelanggan, nama: txNama, hp: txHp});
-            tsInstances['staff-input-nama'].setValue(txNama, true);
+            tsInstances['staff-input-nama'].setValue(txNama);
         }
         if(tsInstances['staff-input-hp']) {
+            tsInstances['staff-input-hp'].clear(true);
             tsInstances['staff-input-hp'].addOption({id: txIdPelanggan, nama: txNama, hp: txHp});
-            tsInstances['staff-input-hp'].setValue(txHp, true);
+            tsInstances['staff-input-hp'].setValue(txHp);
         }
 
         var custDataForEdit = (appData.pelanggan || []).find(p => p && String(p['ID']) === String(px['ID Pelanggan']));
         togglePotongKuotaOption(custDataForEdit && custDataForEdit['Status'] === 'Member', false);
+
+        document.getElementById('staff-services-container').innerHTML = '';
+        staffServicesCount = 0; staffServicesData = {};
 
         var items = [];
         try {
@@ -612,7 +552,7 @@ function openTxDetail(id) {
             else if (totalHarga === 0 && (pmbStatus === 'Potong Kuota' || kgTerpakai > 0)) pmbStatus = 'Potong Kuota';
 
             pmbEl.value = pmbStatus;
-
+            
             if (isPaymentLocked) {
                 pmbEl.disabled = true;
                 pmbEl.classList.add('opacity-50', 'cursor-not-allowed', 'bg-slate-200');
@@ -626,6 +566,7 @@ function openTxDetail(id) {
         calcStaffTotalAll();
         validateStaffForm();
 
+        // Lepaskan mode populating
         isFormPopulating = false;
     }, 150);
 }
