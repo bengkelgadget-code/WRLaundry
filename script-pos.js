@@ -740,6 +740,15 @@ function submitStaffTransaction() {
 function execSaveStaff(recordObj, fileData, btn) {
     if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
     if(String(recordObj['No Telpon']).startsWith("'")) { recordObj['No Telpon'] = recordObj['No Telpon'].substring(1); }
+    
+    // DEBUG: Tampilkan info detail di console
+    console.log("=== DEBUG execSaveStaff ===");
+    console.log("GAS_URL:", typeof GAS_URL !== 'undefined' ? GAS_URL.substring(0, 60) + '...' : 'TIDAK DITEMUKAN');
+    console.log("_isZettBridgePolyfill:", window._isZettBridgePolyfill);
+    console.log("typeof google:", typeof google);
+    console.log("recordObj.ID:", recordObj['ID']);
+    console.log("recordObj.Nama:", recordObj['Nama Pelanggan']);
+    console.log("fileData:", fileData ? 'ADA (foto)' : 'NULL (tidak ada foto)');
 
     // 1. ZETTBOT: Pemutusan Total (Decoupling) UI ke Firebase secara Langsung
     var existsIdx = appData.produksi.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
@@ -770,9 +779,17 @@ function execSaveStaff(recordObj, fileData, btn) {
     document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx);
     showSuccessModal();
 
-    // 3. FIX: Selalu gunakan ZettBridge (google.script tidak tersedia di Vercel)
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-        // Mode GAS native (jarang dipakai)
+    // 3. FIX: Deteksi mode GAS native vs Vercel/ZettBridge
+    // GAS native HANYA jika ada google.script.run.withSuccessHandler DAN bukan ZettBridge polyfill
+    var isGasNative = (typeof google !== 'undefined' && 
+                       google.script && 
+                       typeof google.script.run === 'object' &&
+                       google.script.run !== null &&
+                       typeof google.script.run.withSuccessHandler === 'function' &&
+                       !window._isZettBridgePolyfill);
+
+    if (isGasNative) {
+        // Mode GAS native murni (deploy langsung dari GAS, bukan Vercel)
         google.script.run
             .withSuccessHandler(function(res) {
                 console.log("ZettBOT: Transaksi sukses di-backup (GAS native).");
@@ -781,24 +798,25 @@ function execSaveStaff(recordObj, fileData, btn) {
                 console.error("ZettBOT: Gagal backup ke Sheets (GAS native):", error); 
             })
             .saveTransaksiStaff(recordObj, fileData);
-    } else if (typeof window.google !== 'undefined' && window.google.script) {
-        // fallback window.google
-        window.google.script.run
-            .withSuccessHandler(function(res) {})
-            .withFailureHandler(function(error) {})
-            .saveTransaksiStaff(recordObj, fileData);
     } else {
-        // Mode Vercel/Eksternal: gunakan ZettBridge langsung via fetch ke GAS_URL
+        // Mode Vercel/Eksternal: gunakan fetch langsung ke GAS_URL
+        console.log("ZettBOT: Mengirim ke Sheets via ZettBridge fetch...");
         var payload = (fileData) ? { recordObj: recordObj, fileData: fileData } : { recordObj: recordObj };
+        console.log("DEBUG fetch payload keys:", Object.keys(payload));
+        console.log("DEBUG GAS_URL fetch ke:", typeof GAS_URL !== 'undefined' ? GAS_URL.substring(0,80) : 'UNDEFINED');
         fetch(GAS_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload })
         })
-        .then(function(res) { return res.json(); })
+        .then(function(res) { 
+            console.log("DEBUG fetch response status:", res.status, res.ok);
+            return res.json(); 
+        })
         .then(function(resData) {
+            console.log("DEBUG GAS response:", JSON.stringify(resData).substring(0, 200));
             if (resData && resData.success) {
-                console.log("ZettBOT: Transaksi sukses di-backup ke Sheets via ZettBridge.");
+                console.log("ZettBOT: Transaksi sukses di-backup ke Sheets via fetch.");
                 if (resData.data && typeof mergeProduksiData === 'function') appData.produksi = mergeProduksiData(resData.data);
                 if (resData.pelanggan && typeof cleanPhoneQuotes === 'function') appData.pelanggan = cleanPhoneQuotes(resData.pelanggan);
                 if (typeof database !== 'undefined' && database) database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
@@ -809,6 +827,7 @@ function execSaveStaff(recordObj, fileData, btn) {
             }
         })
         .catch(function(e) {
+            console.error("DEBUG fetch GAGAL total:", e.message, e);
             console.error("ZettBOT: Gagal backup ke Sheets via ZettBridge:", e);
         });
     }
