@@ -62,18 +62,9 @@ function renderStaffTable(keepPage) {
         if (dateText) dateText.innerText = '';
     }
 
-    var prodCopy = []; 
-    for (var m = 0; m < data.length; m++) { 
-        if (data[m]) prodCopy.push(data[m]); 
-    }
+    var prodCopy = []; for (var m = 0; m < data.length; m++) { prodCopy.push(data[m]); }
     
-    prodCopy.sort(function(a, b) {
-        var idA = parseInt(String(a['ID'] || '').replace(/[^0-9]/g, '')) || 0;
-        var idB = parseInt(String(b['ID'] || '').replace(/[^0-9]/g, '')) || 0;
-        return idB - idA;
-    });
-
-    var displayData = prodCopy.filter(function(row) {
+    var displayData = prodCopy.reverse().filter(function(row) {
         var cust = resolvePelanggan(row['ID Pelanggan']); var combined = row['No Nota'] + ' ' + cust.nama + ' ' + cust.hp + ' ' + resolveLayananNameForProduksi(row['Layanan']); combined = combined.toLowerCase();
         
         var matchSearch = !searchVal || combined.includes(searchVal); 
@@ -139,7 +130,6 @@ function renderStaffTable(keepPage) {
         var pBg = ''; if (pmbStatusVal === 'Lunas') pBg = 'bg-emerald-50 text-emerald-600 border-emerald-200'; else if (pmbStatusVal === 'DP') pBg = 'bg-amber-50 text-amber-600 border-amber-200'; else if (pmbStatusVal === 'Potong Kuota') pBg = 'bg-indigo-50 text-indigo-600 border-indigo-200'; else pBg = 'bg-red-50 text-red-500 border-red-200';
 
         var delay = Math.min(index * 0.05, 0.5); 
-        // MEMANGGIL openTxDetail SEPERTI SEMULA (Modal Struk)
         var htmlRow = '<div class="bg-white px-4 py-3 border border-slate-100 rounded-2xl active:bg-slate-50 transition-colors cursor-pointer relative slide-up-fade shadow-sm" style="animation-delay: ' + delay + 's;" onclick="openTxDetail(\'' + row['ID'] + '\')">';
         htmlRow += '<div class="flex justify-between items-center mb-1"><h3 class="text-[13px] font-black text-slate-800 uppercase tracking-tight truncate">' + cust.nama + '</h3><span class="text-[10px] font-bold text-slate-500 font-mono tracking-widest">' + (row['No Nota'] || row['ID']) + '</span></div>';
         htmlRow += '<div class="flex justify-between items-start mb-1.5"><p class="text-[11px] font-semibold text-slate-500 leading-snug w-2/3 pr-2 truncate">' + resolveLayananNameForProduksi(row['Layanan']).replace(/\+/g, ', ') + '</p><p class="text-[12px] font-black text-slate-700 whitespace-nowrap w-1/3 text-right">Rp ' + Number(row['Total Harga'] || 0).toLocaleString('id-ID') + '</p></div>';
@@ -170,7 +160,7 @@ function initCustomerAutocomplete() {
         return { 
             id: p['ID'], 
             nama: String(p['Nama Pelanggan'] || '').trim(), 
-            hp: String(p['No Telpon'] || '').trim().replace(/^'/, '') 
+            hp: String(p['No Telpon'] || '').trim() 
         }; 
     });
 
@@ -186,10 +176,16 @@ function initCustomerAutocomplete() {
                 searchField: ['nama', 'hp'], 
                 options: JSON.parse(JSON.stringify(custOptions)), 
                 maxItems: 1, 
-                create: false, // MATIKAN AUTO CREATE BAWAAN TOMSELECT
+                create: function(input) {
+                    var upInput = input.toUpperCase();
+                    var newOpt = { id: 'AUTO' };
+                    newOpt[isNama ? 'nama' : 'hp'] = upInput;
+                    newOpt[!isNama ? 'nama' : 'hp'] = upInput;
+                    return newOpt;
+                }, 
                 createOnBlur: false, 
                 persist: false, 
-                selectOnTab: true,
+                selectOnTab: true, 
                 openOnFocus: true,
                 shouldLoad: function(query) { return true; }, 
                 placeholder: isNama ? 'Ketik nama pelanggan...' : 'Ketik no HP...',
@@ -199,8 +195,10 @@ function initCustomerAutocomplete() {
                     return function(item) {
                         var term = search.toLowerCase().trim();
                         if (!term) return 1; 
+                        
                         var n = String(item.nama || '').toLowerCase().trim();
                         var h = String(item.hp || '').toLowerCase().trim();
+                        
                         if (n.indexOf(term) === -1 && h.indexOf(term) === -1) return 0;
                         if (n === term || h === term) return 100;
                         if (n.startsWith(term) || h.startsWith(term)) return 50;
@@ -208,50 +206,51 @@ function initCustomerAutocomplete() {
                     };
                 },
 
-                // LOGIKA MANUAL: CEGAT TAB/ENTER UNTUK MENYIMPAN INPUTAN BARU (Anti Copy-Paste Bug)
+                onBlur: function() {
+                    var currentInput = this.control_input.value.trim().toUpperCase();
+                    if (currentInput && this.items.length === 0) {
+                        var visibleOpts = Array.from(this.dropdown_content.querySelectorAll('.option:not(.create)')).filter(function(el) { return el.style.display !== 'none'; });
+                        if (visibleOpts.length > 0) {
+                            var val = visibleOpts[0].getAttribute('data-value');
+                            if (val) { this.setValue(val); return; }
+                        }
+                        this.createItem(currentInput);
+                    }
+                },
+
                 onKeyDown: function(e) {
                     if(e.key === 'Tab' || e.key === 'Enter' || e.keyCode === 13) {
+                        e.preventDefault();
                         var currentInput = this.control_input.value.trim().toUpperCase();
-                        
+
                         if(this.isOpen) {
-                            e.preventDefault();
                             var targetOpt = this.activeOption;
                             if (!targetOpt || !targetOpt.classList.contains('active')) { 
                                 var visibleOpts = Array.from(this.dropdown_content.querySelectorAll('.option:not(.create)')).filter(function(el) { return el.style.display !== 'none'; });
-                                if (visibleOpts.length > 0) { targetOpt = visibleOpts[0]; }
+                                if (visibleOpts.length > 0) { 
+                                    targetOpt = visibleOpts[0]; 
+                                } else { 
+                                    targetOpt = this.dropdown_content.querySelector('.create'); 
+                                } 
                             }
                             
                             if (targetOpt) {
                                 var val = targetOpt.getAttribute('data-value');
-                                if (val) { this.setValue(val); }
-                            } else if (currentInput) {
-                                // JIKA TIDAK ADA DI DATABASE, PAKSA SIMPAN SEBAGAI OPSI BARU (AUTO)
-                                var newOpt = { id: 'AUTO' };
-                                if(isNama) { newOpt.nama = currentInput; newOpt.hp = ''; } else { newOpt.nama = ''; newOpt.hp = currentInput; }
-                                this.addOption(newOpt);
-                                this.setValue(currentInput);
+                                if (targetOpt.classList.contains('create')) { 
+                                    if(currentInput) { this.createItem(currentInput); } 
+                                } else if (val) { 
+                                    this.setValue(val); 
+                                }
                             }
                         } else if (currentInput && this.items.length === 0) {
-                            var newOpt = { id: 'AUTO' };
-                            if(isNama) { newOpt.nama = currentInput; newOpt.hp = ''; } else { newOpt.nama = ''; newOpt.hp = currentInput; }
-                            this.addOption(newOpt);
-                            this.setValue(currentInput);
+                            this.createItem(currentInput);
                         }
                         this.close(); this.blur(); 
                     }
                 },
-                onBlur: function() {
-                    var currentInput = this.control_input.value.trim().toUpperCase();
-                    if (currentInput && this.items.length === 0) {
-                        var newOpt = { id: 'AUTO' };
-                        if(isNama) { newOpt.nama = currentInput; newOpt.hp = ''; } else { newOpt.nama = ''; newOpt.hp = currentInput; }
-                        this.addOption(newOpt);
-                        this.setValue(currentInput);
-                    }
-                },
                 render: { 
                     option: function(item, escape) { 
-                        var isNew = (item.id === undefined || item.id === 'AUTO');
+                        var isNew = (item.id === undefined || item.id === 'AUTO' || !item.hp || !item.nama);
                         if (isNew) { 
                             var val = escape(isNama ? item.nama : item.hp); 
                             return '<div class="py-2 px-3 border-b border-slate-50 text-sm">Tambah baru: <strong class="text-teal-600">' + val + '</strong></div>'; 
@@ -261,11 +260,15 @@ function initCustomerAutocomplete() {
                             var icon = isNama ? 'phone' : 'user';
                             return '<div class="py-2 px-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50"><span class="font-bold block text-slate-800 text-[13px] mb-0.5 pointer-events-none">' + mainText + '</span><span class="text-[11px] font-mono text-slate-500 pointer-events-none"><i class="ph-fill ph-' + icon + ' text-teal-500 mr-1 pointer-events-none"></i> ' + subText + '</span></div>'; 
                         } 
+                    },
+                    option_create: function(data, escape) { 
+                        return '<div class="create py-2 px-3 text-sm border-b border-slate-50">Tambah baru: <strong class="text-teal-600">' + escape(data.input) + '</strong></div>'; 
                     }
                 },
                 onChange: function(value) {
                     try {
                         validateStaffForm(); 
+                        
                         var targetId = isNama ? 'staff-input-hp' : 'staff-input-nama';
                         var companionTs = tsInstances[targetId];
 
@@ -280,73 +283,69 @@ function initCustomerAutocomplete() {
                             return; 
                         }
                         
-                        var match = this.options[value];
+                        var match = isNama ? custOptions.find(function(c) { return c.nama === value; }) : custOptions.find(function(c) { return c.hp === value; });
                         
                         if (match) {
-                            if (match.id !== 'AUTO') {
-                                if (companionTs) { 
-                                    companionTs.addOption(match); 
-                                    var valToSet = isNama ? match.hp : match.nama; 
-                                    companionTs.setValue(valToSet, true); 
-                                    companionTs.disable();
-                                }
-                                
-                                var realCust = (appData.pelanggan || []).find(function(p) { return String(p['ID']) === String(match.id); }); 
-                                var infoEl = document.getElementById('staff-member-info'); 
-                                var pmbInput = document.getElementById('staff-input-pembayaran');
-                                
-                                if (realCust && realCust['Status'] === 'Member') {
-                                    togglePotongKuotaOption(true, false);
-                                    
-                                    var sisaKuota = parseFloat(realCust['Sisa Kuota (Kg)'] || 0); var paketName = '-';
-                                    if (realCust['Paket Member']) {
-                                        var paketObj = (appData.member || []).find(function(m) { return m['ID'] === realCust['Paket Member']; });
-                                        if (paketObj) {
-                                            paketName = paketObj['Nama Paket']; var pNameStr = paketName.toLowerCase(); var matchedKiloan = null; var maxScore = 0;
-                                            (appData.kiloan || []).forEach(function(k) {
-                                                var kNameStr = k['Nama Layanan'].toLowerCase(); var score = 0; if (pNameStr.includes(kNameStr)) score += 10;
-                                                var kWords = kNameStr.split(/\s+/); kWords.forEach(function(kw) { if (kw.length > 2 && pNameStr.includes(kw)) score += 1; });
-                                                if (score > maxScore) { maxScore = score; matchedKiloan = k; }
-                                            });
-                                            if (matchedKiloan) { var firstRowId = Object.keys(staffServicesData)[0]; if (firstRowId) { var tsSelect = tsInstances['staff-srv-select-' + firstRowId]; if (tsSelect) { var targetVal = 'K-' + matchedKiloan['ID']; tsSelect.setValue(targetVal); handleStaffServiceSelect(firstRowId, targetVal); } } }
-                                        }
-                                    }
-                                    infoEl.innerHTML = '<i class="ph-fill ph-diamond text-lg"></i> <span>Paket <b>' + paketName + '</b> | Sisa Kuota <b>' + sisaKuota + ' Kg</b></span>'; infoEl.classList.remove('hidden'); infoEl.classList.add('flex');
-                                    if (pmbInput) { pmbInput.value = 'Potong Kuota'; handlePembayaranChange(); }
-                                } else {
-                                    togglePotongKuotaOption(false, false);
-                                    infoEl.classList.add('hidden'); infoEl.classList.remove('flex');
-                                }
-                            } else {
-                                if (companionTs) {
-                                    companionTs.enable();
-                                    // BIARKAN KOSONG, JANGAN DI CLEAR JIKA USER PINDAH-PINDAH
-                                }
-                                togglePotongKuotaOption(false, false);
-                                var infoEl = document.getElementById('staff-member-info');
-                                if(infoEl) {
-                                    infoEl.classList.add('hidden'); 
-                                    infoEl.classList.remove('flex'); 
-                                }
+                            if (companionTs) { 
+                                companionTs.addOption({id: match.id, hp: match.hp, nama: match.nama}); 
+                                var valToSet = isNama ? match.hp : match.nama; 
+                                companionTs.setValue(valToSet, true); 
+                                companionTs.disable();
                             }
                             
-                            calcStaffTotalAll(); 
-                            this.close();
+                            var realCust = (appData.pelanggan || []).find(function(p) { return p['ID'] === match.id; }); 
+                            var infoEl = document.getElementById('staff-member-info'); 
+                            var pmbInput = document.getElementById('staff-input-pembayaran');
                             
-                            setTimeout(function() { 
-                                if (isNama && match.id === 'AUTO') {
-                                    if(companionTs) companionTs.focus(); 
-                                } else {
-                                    if(tsInstances['staff-srv-select-1']) { tsInstances['staff-srv-select-1'].focus(); } 
+                            if (realCust && realCust && realCust['Status'] === 'Member') {
+                                togglePotongKuotaOption(true, false);
+                                
+                                var sisaKuota = parseFloat(realCust['Sisa Kuota (Kg)'] || 0); var paketName = '-';
+                                if (realCust['Paket Member']) {
+                                    var paketObj = (appData.member || []).find(function(m) { return m['ID'] === realCust['Paket Member']; });
+                                    if (paketObj) {
+                                        paketName = paketObj['Nama Paket']; var pNameStr = paketName.toLowerCase(); var matchedKiloan = null; var maxScore = 0;
+                                        (appData.kiloan || []).forEach(function(k) {
+                                            var kNameStr = k['Nama Layanan'].toLowerCase(); var score = 0; if (pNameStr.includes(kNameStr)) score += 10;
+                                            var kWords = kNameStr.split(/\s+/); kWords.forEach(function(kw) { if (kw.length > 2 && pNameStr.includes(kw)) score += 1; });
+                                            if (score > maxScore) { maxScore = score; matchedKiloan = k; }
+                                        });
+                                        if (matchedKiloan) { var firstRowId = Object.keys(staffServicesData)[0]; if (firstRowId) { var tsSelect = tsInstances['staff-srv-select-' + firstRowId]; if (tsSelect) { var targetVal = 'K-' + matchedKiloan['ID']; tsSelect.setValue(targetVal); handleStaffServiceSelect(firstRowId, targetVal); } } }
+                                    }
                                 }
+                                infoEl.innerHTML = '<i class="ph-fill ph-diamond text-lg"></i> <span>Paket <b>' + paketName + '</b> | Sisa Kuota <b>' + sisaKuota + ' Kg</b></span>'; infoEl.classList.remove('hidden'); infoEl.classList.add('flex');
+                                if (pmbInput) { pmbInput.value = 'Potong Kuota'; handlePembayaranChange(); }
+                            } else {
+                                togglePotongKuotaOption(false, false);
+                                infoEl.classList.add('hidden'); infoEl.classList.remove('flex');
+                            }
+                            calcStaffTotalAll(); 
+
+                            this.close();
+                            setTimeout(function() { 
+                                if(tsInstances['staff-srv-select-1']) { tsInstances['staff-srv-select-1'].focus(); } 
                             }, 150);
 
                         } else {
                             if (companionTs) { companionTs.enable(); }
-                            var infoEl = document.getElementById('staff-member-info');
-                            if(infoEl) { infoEl.classList.add('hidden'); infoEl.classList.remove('flex'); }
+                            document.getElementById('staff-member-info').classList.add('hidden'); 
+                            document.getElementById('staff-member-info').classList.remove('flex'); 
                             togglePotongKuotaOption(false, false);
+                            
                             this.close();
+                            
+                            setTimeout(function() { 
+                                if (isNama) {
+                                    if(companionTs) { companionTs.focus(); } 
+                                } else {
+                                    if(tsInstances['staff-srv-select-1']) { 
+                                        tsInstances['staff-srv-select-1'].focus(); 
+                                    } else {
+                                        var fbEl = document.getElementById('staff-srv-select-1');
+                                        if (fbEl) fbEl.focus();
+                                    }
+                                }
+                            }, 150);
                         }
 
                     } catch(e) { console.error("Autocomplete Error: ", e); }
@@ -389,12 +388,6 @@ function attachPaymentScroll(inputId) {
 function openStaffModal() {
     var modal = document.getElementById('modal-staff-tx'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
     
-    var titleEls = modal.querySelectorAll('h2, h3');
-    if(titleEls.length > 0) titleEls[0].innerText = "Transaksi Baru";
-
-    var statusContainer = document.getElementById('staff-status-container');
-    if(statusContainer) statusContainer.classList.add('hidden');
-
     var footer = document.getElementById('staff-footer-action');
     var form = document.getElementById('form-staff-tx');
     if (footer && form && footer.parentNode !== form) {
@@ -406,125 +399,81 @@ function openStaffModal() {
     }
 
     if(form) {
-        var allInputs = form.querySelectorAll('input:not([type="hidden"]), textarea');
-        allInputs.forEach(el => {
-            if(el.type !== 'file' && el.type !== 'checkbox' && el.type !== 'radio') el.value = '';
+        // FIX: Reset manual per-elemen agar tidak trigger InvalidStateError pada input[type=file]
+        var allInputs = form.querySelectorAll('input, select, textarea');
+        allInputs.forEach(function(el) {
+            try {
+                var t = (el.type || '').toLowerCase();
+                if (t === 'file') {
+                    var clone = el.cloneNode(false);
+                    el.parentNode.replaceChild(clone, el);
+                    clone.addEventListener('change', function() { previewFileName(clone); });
+                } else if (t === 'checkbox' || t === 'radio') {
+                    el.checked = false;
+                } else if (el.tagName === 'SELECT') {
+                    el.selectedIndex = 0;
+                } else {
+                    el.value = '';
+                }
+            } catch(e) {}
         });
     }
-    
     document.getElementById('staff-foto-label').innerHTML = '<i class="ph-bold ph-camera text-3xl"></i>'; 
     document.getElementById('staff-total-biaya-label').innerText = 'Total Biaya'; 
     document.getElementById('staff-total-biaya').innerText = 'Rp 0';
-    
-    var pmbInput = document.getElementById('staff-input-pembayaran'); 
-    if (pmbInput) {
-        pmbInput.value = 'Belum Lunas';
-        pmbInput.disabled = false;
-        pmbInput.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-slate-200');
-    }
+    var pmbInput = document.getElementById('staff-input-pembayaran'); if (pmbInput) pmbInput.value = 'Belum Lunas';
     
     togglePotongKuotaOption(false, false);
 
+    var diskonInput = document.getElementById('staff-input-diskon'); if (diskonInput) diskonInput.value = '';
     var dpContainer = document.getElementById('staff-dp-container'); if (dpContainer) dpContainer.classList.add('hidden');
     var memberInfo = document.getElementById('staff-member-info'); if (memberInfo) { memberInfo.classList.add('hidden'); memberInfo.classList.remove('flex'); }
-    
     var maxNum = 0; var d = new Date(); var day = ('0' + d.getDate()).slice(-2); var month = ('0' + (d.getMonth() + 1)).slice(-2); var year = String(d.getFullYear()).slice(-2); var prefix = 'WRL.' + day + month + year + '.';
     (appData.produksi||[]).forEach(function(row) { if(row['No Nota'] && row['No Nota'].startsWith(prefix)) { var parts = row['No Nota'].split('.'); if (parts.length > 2) { var n = parseInt(parts[2]); if(!isNaN(n) && n > maxNum) maxNum = n; } } });
-    var notaInput = document.getElementById('staff-input-nota'); 
-    if (notaInput) { 
-        notaInput.value = prefix + String(maxNum+1).padStart(3,'0'); 
-        notaInput.disabled = false;
-        notaInput.classList.remove('bg-slate-100', 'cursor-not-allowed', 'opacity-70');
-    }
+    var notaInput = document.getElementById('staff-input-nota'); if (notaInput) { notaInput.value = prefix + String(maxNum+1).padStart(3,'0'); }
     
     attachPaymentScroll('staff-input-diskon');
     attachPaymentScroll('staff-input-pembayaran');
     attachPaymentScroll('staff-input-dp');
 
     try { initCustomerAutocomplete(); } catch(e) {}
-    
-    if(tsInstances['staff-input-nama']) { tsInstances['staff-input-nama'].clear(true); tsInstances['staff-input-nama'].enable(); }
-    if(tsInstances['staff-input-hp']) { tsInstances['staff-input-hp'].clear(true); tsInstances['staff-input-hp'].enable(); }
-    
     document.getElementById('staff-services-container').innerHTML = ''; staffServicesCount = 0; staffServicesData = {};
-    addStaffServiceRow(false); 
-    validateStaffForm(); 
-
-    setTimeout(function() { if(tsInstances['staff-input-nama']) { tsInstances['staff-input-nama'].focus(); } }, 300);
-}
-
-// KEMBALIKAN FUNGSI openTxDetail SEPERTI SEMULA (Modal PREVIEW STRUK RINGKAS)
-function openTxDetail(id) {
-    var px = appData.produksi.find(function(x) { return x && String(x['ID']) === String(id); }); if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
-    currentDetailId = id; var cust = resolvePelanggan(px['ID Pelanggan']); currentSavedTx = {...px, 'Nama Pelanggan': cust.nama, 'No Telpon': cust.hp};
-    document.getElementById('tx-detail-preview').innerHTML = generateReceiptHTML(currentSavedTx);
-    
-    var statusEl = document.getElementById('tx-detail-status'); 
-    if (statusEl) { 
-        statusEl.value = px['Status'] || 'Proses'; 
-        statusEl.disabled = false; 
-    }
-    
-    var pmbEl = document.getElementById('tx-detail-pembayaran');
-    var pmbStatus = px['Pembayaran'] || 'Belum Lunas'; 
-    var totalHarga = Number(px['Total Harga'] || 0); 
-    
-    if (pmbEl) {
-        var kgTerpakai = parseFloat(px['Kg Terpakai']) || 0;
-        var subtotalTx = 0; var diskonTx = 0;
-        try { var parsed = JSON.parse(px['Detail Layanan JSON'] || '{}'); subtotalTx = parsed.subtotal || 0; diskonTx = parsed.diskon || 0; } catch(e){}
-        if (totalHarga === 0 && subtotalTx > 0 && diskonTx === 0) { pmbStatus = 'Potong Kuota'; px['Pembayaran'] = 'Potong Kuota'; }
-        else if (totalHarga === 0 && (pmbStatus === 'Potong Kuota' || kgTerpakai > 0)) { pmbStatus = 'Potong Kuota'; px['Pembayaran'] = 'Potong Kuota'; }
-        
-        var custDataForEdit = (appData.pelanggan || []).find(function(p) { return p && p['ID'] === px['ID Pelanggan']; });
-        togglePotongKuotaOption(custDataForEdit && custDataForEdit['Status'] === 'Member', true);
-        
-        pmbEl.value = pmbStatus;
-        var pmbContainer = document.getElementById('tx-detail-pembayaran-container');
-        
-        if (pmbStatus === 'Potong Kuota' && totalHarga === 0) { 
-            pmbContainer.classList.add('hidden'); 
-        } else { 
-            pmbContainer.classList.remove('hidden'); 
-            pmbEl.disabled = false; 
-            pmbEl.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-slate-200'); 
-        }
-    }
-    
-    var isLocked = false; 
-    var isPaymentLocked = false;
-    
-    if (currentUser && currentUser.Role !== 'ADMIN') { 
-        if (px['Status'] === 'Diambil') { 
-            isLocked = true; 
-        } else if (px['Pembayaran'] === 'Lunas') {
-            isPaymentLocked = true; 
-        }
-    }
-    
-    var lockMsg = document.getElementById('tx-lock-msg'); 
-    var editCtrls = document.getElementById('tx-edit-controls');
-    
-    if (isLocked) { 
-        if(lockMsg) { lockMsg.innerHTML = '<i class="ph-fill ph-lock-key mr-2"></i> Transaksi telah Diambil dan dikunci.'; lockMsg.classList.remove('hidden'); }
-        if(editCtrls) editCtrls.classList.add('hidden'); 
-    } else { 
-        if(lockMsg) lockMsg.classList.add('hidden'); 
-        if(editCtrls) editCtrls.classList.remove('hidden'); 
-        
-        if (isPaymentLocked && pmbEl) {
-            pmbEl.disabled = true;
-            pmbEl.classList.add('opacity-50', 'cursor-not-allowed', 'bg-slate-200');
-        }
-    }
-    
-    var modal = document.getElementById('modal-tx-detail'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+    addStaffServiceRow(false); validateStaffForm(); setTimeout(function() { if(tsInstances['staff-input-nama']) { tsInstances['staff-input-nama'].focus(); } }, 300);
 }
 
 function handlePembayaranChange() {
     var val = document.getElementById('staff-input-pembayaran').value; var dpContainer = document.getElementById('staff-dp-container');
     if(val === 'DP') { dpContainer.classList.remove('hidden'); setTimeout(function() { var dpInput = document.getElementById('staff-input-dp'); if (dpInput) { dpInput.focus(); } }, 150); } else { dpContainer.classList.add('hidden'); var dpInput = document.getElementById('staff-input-dp'); if (dpInput) dpInput.value = ''; }
     calcStaffTotalAll();
+}
+
+function togglePotongKuotaOption(isMember, isEditModal) {
+    var selectId = isEditModal ? 'tx-detail-pembayaran' : 'staff-input-pembayaran';
+    var optId = isEditModal ? 'opt-tx-potong-kuota' : 'opt-potong-kuota';
+    
+    var selectEl = document.getElementById(selectId);
+    if (!selectEl) return;
+    
+    var existingOption = document.getElementById(optId);
+    
+    if (isMember) {
+        if (!existingOption) {
+            var opt = document.createElement('option');
+            opt.value = "Potong Kuota";
+            opt.id = optId;
+            opt.className = "font-bold text-indigo-600";
+            opt.innerHTML = "💎 Potong Kuota (Member)";
+            selectEl.appendChild(opt);
+        }
+    } else {
+        if (existingOption) {
+            if (selectEl.value === 'Potong Kuota') {
+                selectEl.value = 'Belum Lunas';
+                if (!isEditModal) handlePembayaranChange();
+            }
+            existingOption.remove();
+        }
+    }
 }
 
 function addStaffServiceRow(autoFocus) {
@@ -657,7 +606,7 @@ function calcStaffTotalAll() {
 function previewFileName(input) {
     if(input.files && input.files[0]) {
         var reader = new FileReader();
-        reader.onload = function(e) { var labelEl = document.getElementById('staff-foto-label'); if (labelEl) { labelEl.innerHTML = '<img src="' + e.target.result + '" class="absolute inset-0 w-full h-full object-cover z-0 rounded-xl"><div class="absolute inset-0 bg-slate-900/30 flex items-center justify-center z-0 rounded-xl"><i class="ph-fill ph-check-circle text-white drop-shadow-md text-4xl shadow-slate-900"></i></div>'; } };
+        reader.onload = function(e) { var labelEl = document.getElementById('staff-foto-label'); if (labelEl) { labelEl.innerHTML = '<img src="' + e.target.result + '" class="absolute inset-0 w-full h-full object-cover z-0"><div class="absolute inset-0 bg-slate-900/30 flex items-center justify-center z-0"><i class="ph-fill ph-check-circle text-white drop-shadow-md text-4xl shadow-slate-900"></i></div>'; } };
         reader.readAsDataURL(input.files[0]);
     } else { var labelEl = document.getElementById('staff-foto-label'); if (labelEl) { labelEl.innerHTML = '<i class="ph-bold ph-camera text-3xl"></i>'; } }
     validateStaffForm(); setTimeout(function() { var btn = document.getElementById('btn-submit-staff'); var footer = document.getElementById('staff-footer-action'); if (btn && footer && !footer.classList.contains('hidden')) { btn.focus(); } }, 300);
@@ -715,70 +664,37 @@ function submitStaffTransaction() {
         var finalHp = hp; if (finalHp.startsWith('0')) finalHp = "'" + finalHp;
         var finalJSON = { items: detailJSON, subtotal: calcRes.subtotalAll, diskon: calcRes.diskon, potonganMember: calcRes.potonganMember, kgTerpakai: calcRes.kgTerpakai };
         
-        let txId = '';
-        let noNota = '';
-        let waktuMasuk = '';
-        var statusEl = document.getElementById('staff-input-status');
-        let statusTx = (window.isEditTxMode && statusEl) ? statusEl.value : 'Proses';
+        let maxNum = 0;
+        (appData.produksi || []).forEach(r => { 
+            let idStr = String(r.ID || ''); 
+            if(idStr.startsWith('TX-')) { 
+                let num = parseInt(idStr.split('-')[1]); 
+                if(!isNaN(num) && num > maxNum) maxNum = num; 
+            } 
+        });
+        let txId = 'TX-' + String(maxNum + 1).padStart(4, '0');
 
-        if (window.isEditTxMode && window.currentEditTxData) {
-            txId = window.currentEditTxData['ID'];
-            noNota = window.currentEditTxData['No Nota'];
-            waktuMasuk = window.currentEditTxData['Waktu Masuk'];
-        } else {
-            let maxNum = 0;
-            (appData.produksi || []).forEach(r => { 
-                if (!r) return;
-                let idStr = String(r.ID || ''); 
-                if(idStr.startsWith('TX-')) { 
-                    let num = parseInt(idStr.split('-')[1]); 
-                    if(!isNaN(num) && num > maxNum) maxNum = num; 
+        let maxNota = 0; 
+        let dDate = new Date(); 
+        let dayStr = ('0' + dDate.getDate()).slice(-2); 
+        let monthStr = ('0' + (dDate.getMonth() + 1)).slice(-2); 
+        let yearStr = String(dDate.getFullYear()).slice(-2); 
+        let notaPrefix = 'WRL.' + dayStr + monthStr + yearStr + '.';
+        (appData.produksi||[]).forEach(function(row) { 
+            if(row['No Nota'] && String(row['No Nota']).startsWith(notaPrefix)) { 
+                let parts = String(row['No Nota']).split('.'); 
+                if (parts.length > 2) { 
+                    let n = parseInt(parts[2]); 
+                    if(!isNaN(n) && n > maxNota) maxNota = n; 
                 } 
-            });
-            txId = 'TX-' + String(maxNum + 1).padStart(4, '0');
-
-            let maxNota = 0; 
-            let dDate = new Date(); 
-            let dayStr = ('0' + dDate.getDate()).slice(-2); 
-            let monthStr = ('0' + (dDate.getMonth() + 1)).slice(-2); 
-            let yearStr = String(dDate.getFullYear()).slice(-2); 
-            let notaPrefix = 'WRL.' + dayStr + monthStr + yearStr + '.';
-            (appData.produksi||[]).forEach(function(row) { 
-                if(row && row['No Nota'] && String(row['No Nota']).startsWith(notaPrefix)) { 
-                    let parts = String(row['No Nota']).split('.'); 
-                    if (parts.length > 2) { 
-                        let n = parseInt(parts[2]); 
-                        if(!isNaN(n) && n > maxNota) maxNota = n; 
-                    } 
-                } 
-            });
-            noNota = notaPrefix + String(maxNota+1).padStart(3,'0');
-            waktuMasuk = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
-        }
+            } 
+        });
+        let noNota = notaPrefix + String(maxNota+1).padStart(3,'0');
+        let waktuMasuk = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
 
         let idPelanggan = '';
-        let cust = (appData.pelanggan || []).find(p => p && p['Nama Pelanggan'] === nama);
-        if (cust) {
-            idPelanggan = cust['ID'];
-        } else {
-            // ZETTBOT FIX: Auto Create Pelanggan Optimistic (Mencegah UNKNOWN)
-            let maxPlg = 0;
-            (appData.pelanggan || []).forEach(p => { 
-                if(p && p.ID && String(p.ID).startsWith('PLG-')) { 
-                    let num = parseInt(p.ID.split('-')[1]); 
-                    if(!isNaN(num) && num > maxPlg) maxPlg = num; 
-                } 
-            });
-            idPelanggan = 'PLG-' + String(maxPlg + 1).padStart(4, '0');
-            appData.pelanggan.push({
-                'ID': idPelanggan,
-                'Nama Pelanggan': nama,
-                'No Telpon': finalHp,
-                'Status': 'Umum',
-                'Paket Member': '',
-                'Sisa Kuota (Kg)': 0
-            });
-        }
+        let cust = (appData.pelanggan || []).find(p => p['Nama Pelanggan'] === nama);
+        if (cust) idPelanggan = cust['ID'];
         
         var recordObj = { 
             'ID': txId,
@@ -787,7 +703,7 @@ function submitStaffTransaction() {
             'Nama Pelanggan': nama, 
             'No Telpon': finalHp, 
             'Layanan': detailArr.join(' + '), 
-            'Status': statusTx,
+            'Status': 'Proses',
             'Total Harga': total, 
             'No Nota': noNota,
             'Pembayaran': calcRes.pmb, 
@@ -796,10 +712,6 @@ function submitStaffTransaction() {
             'Detail Layanan JSON': JSON.stringify(finalJSON), 
             'Kg Terpakai': calcRes.kgTerpakai 
         };
-
-        if (window.isEditTxMode && window.currentEditTxData && window.currentEditTxData['Foto']) {
-            recordObj['Foto'] = window.currentEditTxData['Foto'];
-        }
 
         if (btn) { btn.innerHTML = '<i class="ph-bold ph-spinner animate-spin mr-2 text-xl"></i> SIMPAN...'; btn.disabled = true; }
 
@@ -829,24 +741,34 @@ function execSaveStaff(recordObj, fileData, btn) {
     if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
     if(String(recordObj['No Telpon']).startsWith("'")) { recordObj['No Telpon'] = recordObj['No Telpon'].substring(1); }
     
+    // DEBUG: Tampilkan info detail di console
+    console.log("=== DEBUG execSaveStaff ===");
+    console.log("GAS_URL:", typeof GAS_URL !== 'undefined' ? GAS_URL.substring(0, 60) + '...' : 'TIDAK DITEMUKAN');
+    console.log("_isZettBridgePolyfill:", window._isZettBridgePolyfill);
+    console.log("typeof google:", typeof google);
+    console.log("recordObj.ID:", recordObj['ID']);
+    console.log("recordObj.Nama:", recordObj['Nama Pelanggan']);
+    console.log("fileData:", fileData ? 'ADA (foto)' : 'NULL (tidak ada foto)');
+
+    // 1. ZETTBOT: Pemutusan Total (Decoupling) UI ke Firebase secara Langsung
     var existsIdx = appData.produksi.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
-    if (existsIdx >= 0) { 
-        appData.produksi[existsIdx] = recordObj; 
-    } else { 
-        appData.produksi.push(recordObj); 
-        if (recordObj['Pembayaran'] === 'Potong Kuota' && recordObj['Kg Terpakai']) {
-            var custIdx = appData.pelanggan.findIndex(p => p && p['Nama Pelanggan'] === recordObj['Nama Pelanggan']);
-            if (custIdx >= 0) {
-                var sisa = parseFloat(appData.pelanggan[custIdx]['Sisa Kuota (Kg)']) - parseFloat(recordObj['Kg Terpakai']);
-                appData.pelanggan[custIdx]['Sisa Kuota (Kg)'] = sisa < 0 ? 0 : Math.round(sisa * 100) / 100;
-            }
+    if (existsIdx >= 0) { appData.produksi[existsIdx] = recordObj; } else { appData.produksi.unshift(recordObj); }
+
+    // Pemotongan Kuota Optimistic
+    if (recordObj['Pembayaran'] === 'Potong Kuota' && recordObj['Kg Terpakai']) {
+        var custIdx = appData.pelanggan.findIndex(p => p['Nama Pelanggan'] === recordObj['Nama Pelanggan']);
+        if (custIdx >= 0) {
+            var sisa = parseFloat(appData.pelanggan[custIdx]['Sisa Kuota (Kg)']) - parseFloat(recordObj['Kg Terpakai']);
+            appData.pelanggan[custIdx]['Sisa Kuota (Kg)'] = sisa < 0 ? 0 : Math.round(sisa * 100) / 100;
         }
     }
 
+    // 2. Suntik Firebase! Mulai detik ini, Firebase adalah Penguasa Mutlak Data Layar
     if (typeof database !== 'undefined' && database) {
         database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
     }
 
+    // Render layar 0-Delay
     if(typeof renderStaffTable === 'function') renderStaffTable(true);
     if(typeof renderTable === 'function') renderTable('Produksi', true);
     if(typeof updateDashboard === 'function') updateDashboard();
@@ -857,6 +779,8 @@ function execSaveStaff(recordObj, fileData, btn) {
     document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx);
     showSuccessModal();
 
+    // 3. FIX: Deteksi mode GAS native vs Vercel/ZettBridge
+    // GAS native HANYA jika ada google.script.run.withSuccessHandler DAN bukan ZettBridge polyfill
     var isGasNative = (typeof google !== 'undefined' && 
                        google.script && 
                        typeof google.script.run === 'object' &&
@@ -865,47 +789,94 @@ function execSaveStaff(recordObj, fileData, btn) {
                        !window._isZettBridgePolyfill);
 
     if (isGasNative) {
+        // Mode GAS native murni (deploy langsung dari GAS, bukan Vercel)
         google.script.run
-            .withSuccessHandler(function(res) {})
-            .withFailureHandler(function(error) {})
+            .withSuccessHandler(function(res) {
+                console.log("ZettBOT: Transaksi sukses di-backup (GAS native).");
+            })
+            .withFailureHandler(function(error) { 
+                console.error("ZettBOT: Gagal backup ke Sheets (GAS native):", error); 
+            })
             .saveTransaksiStaff(recordObj, fileData);
     } else {
+        // Mode Vercel/Eksternal: gunakan fetch langsung ke GAS_URL
+        console.log("ZettBOT: Mengirim ke Sheets via ZettBridge fetch...");
         var payload = (fileData) ? { recordObj: recordObj, fileData: fileData } : { recordObj: recordObj };
-        
-        fetch(typeof GAS_URL !== 'undefined' ? GAS_URL : '', {
+        console.log("DEBUG fetch payload keys:", Object.keys(payload));
+        console.log("DEBUG GAS_URL fetch ke:", typeof GAS_URL !== 'undefined' ? GAS_URL.substring(0,80) : 'UNDEFINED');
+        fetch(GAS_URL, {
             method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload })
         })
-        .then(function(res) { return res.json(); })
+        .then(function(res) { 
+            console.log("DEBUG fetch response status:", res.status, res.ok);
+            return res.json(); 
+        })
         .then(function(resData) {
+            console.log("DEBUG GAS response:", JSON.stringify(resData).substring(0, 200));
             if (resData && resData.success) {
+                console.log("ZettBOT: Transaksi sukses di-backup ke Sheets via fetch.");
                 if (resData.data && typeof mergeProduksiData === 'function') appData.produksi = mergeProduksiData(resData.data);
                 if (resData.pelanggan && typeof cleanPhoneQuotes === 'function') appData.pelanggan = cleanPhoneQuotes(resData.pelanggan);
                 if (typeof database !== 'undefined' && database) database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
                 if (typeof renderStaffTable === 'function') renderStaffTable(true);
                 if (typeof renderTable === 'function') renderTable('Produksi', true);
+            } else {
+                console.error("ZettBOT: GAS response error:", resData);
             }
         })
-        .catch(function(e) { console.error("ZettBridge Error:", e); });
+        .catch(function(e) {
+            console.error("DEBUG fetch GAGAL total:", e.message, e);
+            console.error("ZettBOT: Gagal backup ke Sheets via ZettBridge:", e);
+        });
     }
+}
+
+function openTxDetail(id) {
+    var px = appData.produksi.find(function(x) { return String(x['ID']) === String(id); }); if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
+    currentDetailId = id; var cust = resolvePelanggan(px['ID Pelanggan']); currentSavedTx = {...px, 'Nama Pelanggan': cust.nama, 'No Telpon': cust.hp};
+    document.getElementById('tx-detail-preview').innerHTML = generateReceiptHTML(currentSavedTx);
+    var statusEl = document.getElementById('tx-detail-status'); if (statusEl) statusEl.value = px['Status'] || 'Proses';
+    var pmbEl = document.getElementById('tx-detail-pembayaran');
+    if (pmbEl) {
+        var totalHarga = Number(px['Total Harga'] || 0); 
+        var kgTerpakai = parseFloat(px['Kg Terpakai']) || 0;
+        var pmbStatus = px['Pembayaran'] || 'Belum Lunas'; 
+        var subtotalTx = 0; var diskonTx = 0;
+        try { var parsed = JSON.parse(px['Detail Layanan JSON'] || '{}'); subtotalTx = parsed.subtotal || 0; diskonTx = parsed.diskon || 0; } catch(e){}
+        if (totalHarga === 0 && subtotalTx > 0 && diskonTx === 0) { pmbStatus = 'Potong Kuota'; px['Pembayaran'] = 'Potong Kuota'; }
+        else if (totalHarga === 0 && (pmbStatus === 'Potong Kuota' || kgTerpakai > 0)) { pmbStatus = 'Potong Kuota'; px['Pembayaran'] = 'Potong Kuota'; }
+        
+        var custDataForEdit = (appData.pelanggan || []).find(function(p) { return p['ID'] === px['ID Pelanggan']; });
+        togglePotongKuotaOption(custDataForEdit && custDataForEdit['Status'] === 'Member', true);
+        
+        pmbEl.value = pmbStatus;
+        var pmbContainer = document.getElementById('tx-detail-pembayaran-container');
+        
+        if (pmbStatus === 'Potong Kuota' && totalHarga === 0) { pmbContainer.classList.add('hidden'); } else { pmbContainer.classList.remove('hidden'); pmbEl.disabled = false; pmbEl.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-slate-200'); }
+    }
+    var isLocked = false; if (currentUser && currentUser.Role !== 'ADMIN') { if (px['Status'] === 'Diambil' || px['Pembayaran'] === 'Lunas') { isLocked = true; } }
+    var lockMsg = document.getElementById('tx-lock-msg'); var editCtrls = document.getElementById('tx-edit-controls');
+    if (isLocked) { if(lockMsg) lockMsg.classList.remove('hidden'); if(editCtrls) editCtrls.classList.add('hidden'); } else { if(lockMsg) lockMsg.classList.add('hidden'); if(editCtrls) editCtrls.classList.remove('hidden'); }
+    var modal = document.getElementById('modal-tx-detail'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
 }
 
 function saveTxDetailStatus() {
     if(!currentDetailId) return;
-    var newStatus = document.getElementById('tx-detail-status').value; 
-    var newPembayaran = document.getElementById('tx-detail-pembayaran').value; 
-    var btn = document.getElementById('btn-save-tx-detail'); 
+    var newStatus = document.getElementById('tx-detail-status').value; var newPembayaran = document.getElementById('tx-detail-pembayaran').value; var btn = document.getElementById('btn-save-tx-detail'); 
     var origText = ''; if (btn) { origText = btn.innerHTML; btn.innerHTML = '<i class="ph-bold ph-spinner animate-spin mr-2"></i> MENYIMPAN...'; btn.disabled = true; }
     
     var updateMemory = function() {
         currentSavedTx['Status'] = newStatus; currentSavedTx['Pembayaran'] = newPembayaran; if (newPembayaran === 'Lunas') { currentSavedTx['Sisa Bayar'] = 0; }
-        var idx = appData.produksi.findIndex(x => x && String(x.ID) === String(currentDetailId));
+        var idx = appData.produksi.findIndex(x => String(x.ID) === String(currentDetailId));
         if(idx >= 0) {
             appData.produksi[idx]['Status'] = newStatus;
             appData.produksi[idx]['Pembayaran'] = newPembayaran;
             if (newPembayaran === 'Lunas') appData.produksi[idx]['Sisa Bayar'] = 0;
         }
 
+        // FIREBASE PENGUASA UI
         if (typeof database !== 'undefined' && database) {
             database.ref('appData/produksi').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.produksi) : appData.produksi);
         }
@@ -920,20 +891,26 @@ function saveTxDetailStatus() {
          closeModal('modal-tx-detail'); document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx); showSuccessModal(); return;
     }
     
+    // UI Eksekusi Seketika
     updateMemory();
     if (btn) { btn.innerHTML = origText; btn.disabled = false; }
     closeModal('modal-tx-detail'); 
     document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx); 
     showSuccessModal();
 
+    // Fire and Forget Backup
     google.script.run
-        .withSuccessHandler(function(res) {})
-        .withFailureHandler(function(error) { })
+        .withSuccessHandler(function(res) {
+            console.log("ZettBOT: Update status sukses di-backup ke Sheets.");
+        })
+        .withFailureHandler(function(error) { 
+            console.error("ZettBOT: Gagal backup update status ke Sheets, namun data aman di Firebase."); 
+        })
         .updateStatusProduksi(currentDetailId, newStatus, newPembayaran);
 }
 
 function viewProduksiDetail(id) {
-    var px = appData.produksi.find(function(x) { return x && String(x['ID']) === String(id); }); if(!px) { showToast("Data tidak ditemukan", "error"); return; }
+    var px = appData.produksi.find(function(x) { return String(x['ID']) === String(id); }); if(!px) { showToast("Data tidak ditemukan", "error"); return; }
     var cust = resolvePelanggan(px['ID Pelanggan']); var layananHTML = ''; 
     var subtotalTx = Number(px['Total Harga'] || 0); var diskonTx = 0; var potonganMemberTx = 0; var kgTerpakaiTx = parseFloat(px['Kg Terpakai']) || 0;
     var items = [];
@@ -942,7 +919,7 @@ function viewProduksiDetail(id) {
     if (totalHarga === 0 && subtotalTx > 0 && diskonTx === 0) { pmbStatusVal = 'Potong Kuota'; }
     var isPureMember = (totalHarga === 0 && pmbStatusVal === 'Potong Kuota');
     if (pmbStatusVal === 'Potong Kuota' && kgTerpakaiTx === 0) { items.forEach(function(i) { if(i.satuan === 'Kg') kgTerpakaiTx += i.qty; }); }
-    var custDataForView = appData.pelanggan.find(function(p) { return p && (p['ID'] === px['ID Pelanggan'] || p['Nama Pelanggan'] === px['Nama Pelanggan']); });
+    var custDataForView = appData.pelanggan.find(function(p) { return p['ID'] === px['ID Pelanggan'] || p['Nama Pelanggan'] === px['Nama Pelanggan']; });
     var currentSisaKuotaView = custDataForView ? (parseFloat(custDataForView['Sisa Kuota (Kg)']) || 0) : 0;
     currentSisaKuotaView = Math.round(currentSisaKuotaView * 100) / 100;
     var trackingSisaKuota = currentSisaKuotaView + kgTerpakaiTx; var remainingKg = kgTerpakaiTx;
@@ -1000,7 +977,7 @@ function viewProduksiDetail(id) {
 
 function generateReceiptHTML(px) {
     var layananHTML = ''; var estimasiGlobalHTML = ''; var items = []; var diskonTx = 0; var potonganMemberTx = 0; var subtotalTx = Number(px['Total Harga'] || 0); var kgTerpakaiTx = parseFloat(px['Kg Terpakai']) || 0;
-    var custData = appData.pelanggan.find(function(p) { return p && p['Nama Pelanggan'] === px['Nama Pelanggan']; }); var currentSisaKuota = custData ? (parseFloat(custData['Sisa Kuota (Kg)']) || 0) : 0; 
+    var custData = appData.pelanggan.find(function(p) { return p['Nama Pelanggan'] === px['Nama Pelanggan']; }); var currentSisaKuota = custData ? (parseFloat(custData['Sisa Kuota (Kg)']) || 0) : 0; 
     currentSisaKuota = Math.round(currentSisaKuota * 100) / 100;
     if (px['Detail Layanan JSON']) { try { var parsed = JSON.parse(px['Detail Layanan JSON']); if(!Array.isArray(parsed)) { items = parsed.items || []; diskonTx = parsed.diskon || 0; potonganMemberTx = parsed.potonganMember || 0; subtotalTx = parsed.subtotal || subtotalTx; } else { items = parsed; } } catch(e) {} }
     var totalHarga = Number(px['Total Harga'] || 0);
@@ -1201,14 +1178,6 @@ function updatePrinterStatusUI() {
     }
 }
 
-function executeFallbackPrint() {
-    document.getElementById('print-area').innerHTML = generateReceiptHTML(currentSavedTx); 
-    window.print(); 
-    setTimeout(function() {
-        zettConfirm("Informasi Mode Cetak", "Jika di layar Anda malah muncul 'Simpan sebagai PDF', tekan tulisan tersebut lalu pilih 'Semua Printer' dan pilih nama Printer Thermal Anda.", "info", function(){});
-    }, 1000);
-}
-
 async function actionPrintReceipt() {
     if(!currentSavedTx) return;
 
@@ -1273,19 +1242,28 @@ async function actionPrintReceipt() {
             if (e.name === 'NotFoundError') {
                 showToast("Cetak dibatalkan pengguna.", "error");
                 return;
+            } else if (e.name === 'NotSupportedError') {
+                showToast("Perangkat ini memblokir cetak langsung. Beralih ke mode Sistem/RawBT.", "warning");
             } else {
                 showToast("Gagal Terhubung: " + e.message + ". Beralih ke mode Sistem/RawBT.", "error");
-                setTimeout(executeFallbackPrint, 1000);
-                return;
             }
         }
-    } else {
-        executeFallbackPrint();
     }
+
+    setTimeout(function() { 
+        document.getElementById('print-area').innerHTML = generateReceiptHTML(currentSavedTx); 
+        window.print(); 
+        
+        setTimeout(function() {
+            zettConfirm("Informasi Mode Cetak", "Jika di layar Anda malah muncul 'Simpan sebagai PDF', tekan tulisan tersebut lalu pilih 'Semua Printer' dan pilih nama Printer Thermal Anda. \n\n(Catatan: Jika nama printernya tidak ada, Anda wajib menginstal aplikasi 'RawBT' di PlayStore agar Android Anda mengenali printer kasir).", "info", function(){});
+        }, 1000);
+    }, 500); 
 }
 
+// FIX: Hindari Error "InvalidStateError" di Input File & input type khusus!
 document.addEventListener('input', e => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        // FIX: Abaikan semua input yang tidak support .value assignment atau selectionStart
         try {
             var inputType = e.target.type ? e.target.type.toLowerCase() : 'text';
             if (inputType === 'file' || inputType === 'password' || inputType === 'email' || inputType === 'number' || inputType === 'date' || inputType === 'time' || inputType === 'range' || inputType === 'checkbox' || inputType === 'radio') return;
@@ -1300,12 +1278,14 @@ document.addEventListener('input', e => {
             if (oldVal !== newVal) {
                 var start = e.target.selectionStart;
                 e.target.value = newVal;
+                // Cegah error cursor-jump di beberapa HP
                 try { e.target.setSelectionRange(start, start); } catch(err) {} 
             }
-        } catch(err) { }
+        } catch(err) { /* Abaikan error pada input type yang tidak support value assignment */ }
     }
 });
 
+// PULL TO REFRESH
 var startY = 0;
 document.addEventListener('touchstart', e => { if(window.scrollY < 10) startY = e.touches[0].pageY; });
 document.addEventListener('touchend', e => {
