@@ -1,7 +1,7 @@
 // ZETTBOT HYBRID ENGINE: Auto-Switch Backend & Firebase RTDB
 // ====================================================================
 // PERHATIAN: Masukkan URL Web App (hasil deploy GAS terbaru) Anda di sini!
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzFDsa85R56Nlgn3QwZ_hl3SNVybUtBY0GjgP1LAF-jN_YfTSyA9Dz2XEK6YB7qDNFqlw/exec"; 
+const GAS_URL = "https://script.google.com/macros/s/AKfycbw4LsV2mB_x517QfNxQtA4AQmdYzyaUNPp0KCcC1F-_o-0wJtUaKYvdlqKmZcWBKq4Cyw/exec"; 
 
 const firebaseConfig = {
     apiKey: "AIzaSyBbTTYAroluZ3UYMPgnoxLYn1aqPFq9Wik",
