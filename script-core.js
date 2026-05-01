@@ -102,8 +102,12 @@ if (typeof google === 'undefined') {
 
                     _fetchFromGas: function() {
                         fetch(GAS_URL + "?action=getInitialData&t=" + new Date().getTime(), { method: 'GET' })
-                        .then(res => res.json())
+                        .then(res => {
+                            if (!res.ok) throw new Error("HTTP Error " + res.status);
+                            return res.json();
+                        })
                         .then(data => {
+                            if(data && data.error) throw new Error(data.message || "Proxy Error");
                             if(data && data.produksi) { 
                                 data.produksi = mergeProduksiData(data.produksi);
                                 appData = data; 
@@ -316,9 +320,41 @@ if (typeof google === 'undefined') {
                     },
 
                     _backgroundSyncGasToFirebase: function() {
+                        var syncPostFallback = () => {
+                            fetch(GAS_URL, { 
+                                method: 'POST', 
+                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                body: JSON.stringify({ action: 'getInitialData', payload: {} }) 
+                            })
+                            .then(res => res.json())
+                            .then(data => {
+                                if(data && data.produksi && database) {
+                                    data.produksi = mergeProduksiData(data.produksi);
+                                    if (data.pelanggan && typeof cleanPhoneQuotes === 'function') {
+                                        data.pelanggan = cleanPhoneQuotes(data.pelanggan);
+                                    }
+                                    appData.pelanggan = data.pelanggan || appData.pelanggan;
+                                    appData.waktu = data.waktu || appData.waktu;
+                                    appData.kiloan = data.kiloan || appData.kiloan;
+                                    appData.satuan = data.satuan || appData.satuan;
+                                    appData.pewangi = data.pewangi || appData.pewangi;
+                                    appData.member = data.member || appData.member;
+                                    appData.users = data.users || appData.users;
+                                    appData.produksi = data.produksi;
+                                    database.ref('appData').set(sanitizeFbKeys(appData)); 
+                                    console.log("✅ Background sync (POST fallback) sukses!");
+                                }
+                            })
+                            .catch(e => console.log("Background sync (POST) terganggu.", e));
+                        };
+
                         fetch(GAS_URL + "?action=getInitialData&t=" + new Date().getTime(), { method: 'GET' })
-                        .then(res => res.json())
+                        .then(res => {
+                            if (!res.ok) throw new Error("HTTP Error " + res.status);
+                            return res.json();
+                        })
                         .then(data => { 
+                            if (data && data.error) throw new Error(data.message || "Proxy Error");
                             if(data && data.produksi && database) {
                                 // FIX: Merge data GAS ke appData yang sudah ada
                                 // Jangan replace total - data baru yang belum tersync ke GAS akan hilang!
@@ -338,7 +374,10 @@ if (typeof google === 'undefined') {
                                 database.ref('appData').set(sanitizeFbKeys(appData)); 
                             } 
                         })
-                        .catch(e => console.log("Background sync terganggu."));
+                        .catch(e => {
+                            console.warn("Background sync GET terganggu, mencoba POST fallback...", e);
+                            syncPostFallback();
+                        });
                     }
                 };
             }
