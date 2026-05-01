@@ -74,7 +74,8 @@ function renderStaffTable(keepPage) {
     });
 
     var displayData = prodCopy.filter(function(row) {
-        var cust = resolvePelanggan(row['ID Pelanggan']); var combined = row['No Nota'] + ' ' + cust.nama + ' ' + cust.hp + ' ' + resolveLayananNameForProduksi(row['Layanan']); combined = combined.toLowerCase();
+        var cust = resolvePelanggan(row['ID Pelanggan'], row); 
+        var combined = row['No Nota'] + ' ' + cust.nama + ' ' + cust.hp + ' ' + resolveLayananNameForProduksi(row['Layanan']); combined = combined.toLowerCase();
         
         var matchSearch = !searchVal || combined.includes(searchVal); 
         var matchStatus = !statusFilter || row['Status'] === statusFilter; 
@@ -113,7 +114,7 @@ function renderStaffTable(keepPage) {
 
     var htmlBatch = '';
     paginatedData.forEach(function(row, index) {
-        var cust = resolvePelanggan(row['ID Pelanggan']); var estSelesaiTeks = '+1 Hari'; 
+        var cust = resolvePelanggan(row['ID Pelanggan'], row); var estSelesaiTeks = '+1 Hari'; 
         var subtotalAll = 0; var diskonTx = 0;
         try { 
             var parsed = JSON.parse(row['Detail Layanan JSON'] || '{}'); 
@@ -199,22 +200,6 @@ function initCustomerAutocomplete() {
                 shouldLoad: function(query) { return true; }, 
                 placeholder: isNama ? 'Ketik nama pelanggan...' : 'Ketik no HP...',
                 
-                sortField: [{field: '$score', direction: 'desc'}],
-                score: function(search) {
-                    return function(item) {
-                        var term = search.toLowerCase().trim();
-                        if (!term) return 1; 
-                        
-                        var n = String(item.nama || '').toLowerCase().trim();
-                        var h = String(item.hp || '').toLowerCase().trim();
-                        
-                        if (n.indexOf(term) === -1 && h.indexOf(term) === -1) return 0;
-                        if (n === term || h === term) return 100;
-                        if (n.startsWith(term) || h.startsWith(term)) return 50;
-                        return 10;
-                    };
-                },
-
                 render: { 
                     option: function(item, escape) { 
                         var isNew = (item.id === undefined || item.id === 'AUTO' || !item.hp || !item.nama);
@@ -616,6 +601,45 @@ function submitStaffTransaction() {
         }
         window.isQuotaConfirmed = false; 
 
+        // ZETTBOT RESTORED FIX: AUTO CREATE CUSTOMER
+        let idPelanggan = '';
+        let cust = (appData.pelanggan || []).find(p => p && p['Nama Pelanggan'] === nama);
+        
+        if (cust) {
+            idPelanggan = cust['ID'];
+        } else {
+            let maxPlg = 0;
+            (appData.pelanggan || []).forEach(r => { 
+                if (!r) return;
+                let idStr = String(r.ID || ''); 
+                if(idStr.startsWith('PLG-')) { 
+                    let num = parseInt(idStr.split('-')[1]); 
+                    if(!isNaN(num) && num > maxPlg) maxPlg = num; 
+                } 
+            });
+            idPelanggan = 'PLG-' + String(maxPlg + 1).padStart(4, '0');
+            
+            let newCust = {
+                'ID': idPelanggan,
+                'Nama Pelanggan': nama,
+                'No Telpon': hp,
+                'Status': 'Umum',
+                'Paket Member': '',
+                'Sisa Kuota (Kg)': 0
+            };
+            appData.pelanggan.push(newCust);
+            
+            if (typeof sortDataByIdDesc === 'function') appData.pelanggan = sortDataByIdDesc(appData.pelanggan);
+            if (typeof database !== 'undefined' && database) database.ref('appData/pelanggan').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.pelanggan) : appData.pelanggan);
+            
+            if (typeof GAS_URL !== 'undefined') {
+                fetch(GAS_URL, { 
+                    method: 'POST', 
+                    body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: 'Pelanggan', data: newCust} }) 
+                }).catch(e => console.warn("Auto-save failed: ", e));
+            }
+        }
+
         var detailArr = []; var detailJSON = []; var isValid = true; var waktuMasukDate = new Date();
         Object.values(staffServicesData).forEach(function(d) {
             if(!d.id || d.qty <= 0) isValid = false; var namaLay = ''; var waktuJam = 0; var srcObj = d.type === 'Kiloan' ? appData.kiloan : appData.satuan;
@@ -658,10 +682,6 @@ function submitStaffTransaction() {
         });
         let noNota = notaPrefix + String(maxNota+1).padStart(3,'0');
         let waktuMasuk = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
-
-        let idPelanggan = '';
-        let cust = (appData.pelanggan || []).find(p => p && p['Nama Pelanggan'] === nama);
-        if (cust) idPelanggan = cust['ID'];
         
         var recordObj = { 
             'ID': txId,
@@ -768,7 +788,7 @@ function execSaveStaff(recordObj, fileData, btn) {
 
 function openTxDetail(id) {
     var px = appData.produksi.find(function(x) { return x && String(x['ID']) === String(id); }); if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
-    currentDetailId = id; var cust = resolvePelanggan(px['ID Pelanggan']); currentSavedTx = {...px, 'Nama Pelanggan': cust.nama, 'No Telpon': cust.hp};
+    currentDetailId = id; var cust = resolvePelanggan(px['ID Pelanggan'], px); currentSavedTx = {...px, 'Nama Pelanggan': cust.nama, 'No Telpon': cust.hp};
     document.getElementById('tx-detail-preview').innerHTML = generateReceiptHTML(currentSavedTx);
     
     var statusEl = document.getElementById('tx-detail-status'); 
@@ -877,7 +897,7 @@ function saveTxDetailStatus() {
 
 function viewProduksiDetail(id) {
     var px = appData.produksi.find(function(x) { return x && String(x['ID']) === String(id); }); if(!px) { showToast("Data tidak ditemukan", "error"); return; }
-    var cust = resolvePelanggan(px['ID Pelanggan']); var layananHTML = ''; 
+    var cust = resolvePelanggan(px['ID Pelanggan'], px); var layananHTML = ''; 
     var subtotalTx = Number(px['Total Harga'] || 0); var diskonTx = 0; var potonganMemberTx = 0; var kgTerpakaiTx = parseFloat(px['Kg Terpakai']) || 0;
     var items = [];
     if (px['Detail Layanan JSON']) { try { var parsed = JSON.parse(px['Detail Layanan JSON']); if(!Array.isArray(parsed)) { items = parsed.items || []; diskonTx = parsed.diskon || 0; potonganMemberTx = parsed.potonganMember || 0; subtotalTx = parsed.subtotal || subtotalTx; } else { items = parsed; } } catch(e) {} }
@@ -1205,7 +1225,7 @@ async function actionPrintReceipt(idOverride) {
             showToast("Nota berhasil dicetak langsung ke Mesin!");
             setTimeout(function() { btDevice.gatt.disconnect(); }, 2000);
             
-            return; // ZETTBOT FIX: Berhenti di sini jika sukses, jangan lanjut ke PDF
+            return; 
 
         } catch(e) {
             console.error("Web Bluetooth Error:", e);
@@ -1214,7 +1234,7 @@ async function actionPrintReceipt(idOverride) {
             
             if (e.name === 'NotFoundError') {
                 showToast("Cetak dibatalkan pengguna.", "error");
-                return; // ZETTBOT FIX: Jika batal, hentikan! Jangan ke PDF.
+                return; 
             } else if (e.name === 'NotSupportedError') {
                 showToast("Perangkat ini memblokir cetak langsung.", "warning");
             } else {
@@ -1226,7 +1246,6 @@ async function actionPrintReceipt(idOverride) {
         else showToast("Perangkat tidak support Web Bluetooth", "error");
     }
 
-    // ZETTBOT FIX: Tanyakan dulu sebelum dialihkan ke PDF / Mode Sistem (RawBT)
     zettConfirm("Gunakan Mode Cetak Sistem?", "Bluetooth browser gagal/tidak support.\n\nSistem akan mengalihkan ke mode cetak sistem. Jika layar menampilkan 'Simpan sebagai PDF', ubah tujuan printer ke nama Printer Bluetooth Anda.\n\n(Pastikan aplikasi RawBT terinstall dari PlayStore).", "info", function() {
         setTimeout(function() { 
             document.getElementById('print-area').innerHTML = generateReceiptHTML(tx); 
@@ -1235,7 +1254,6 @@ async function actionPrintReceipt(idOverride) {
     });
 }
 
-// FIX: Hindari Error "InvalidStateError" di Input File & input type khusus!
 document.addEventListener('input', e => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
         try {
