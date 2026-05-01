@@ -42,13 +42,31 @@ function cleanPhoneQuotes(arr) {
 
 function mergeProduksiData(newData) {
     if (!newData) return newData;
+    // Mulai dari data yang ada di memori (appData) sebagai base
+    var merged = (appData.produksi || []).slice();
     newData.forEach(function(newRow) {
-        var oldRow = (appData.produksi || []).find(function(x) { return x.ID === newRow.ID; });
-        if (oldRow && oldRow['Foto'] && String(oldRow['Foto']).startsWith('data:') && (!newRow['Foto'] || !String(newRow['Foto']).startsWith('http'))) {
-            newRow['Foto'] = oldRow['Foto'];
+        var existIdx = merged.findIndex(function(x) { return String(x.ID) === String(newRow.ID); });
+        if (existIdx >= 0) {
+            // Update data yang sudah ada, tapi jaga foto jika GAS belum punya URL Drive-nya
+            var oldRow = merged[existIdx];
+            if (oldRow['Foto'] && String(oldRow['Foto']).startsWith('data:') && (!newRow['Foto'] || !String(newRow['Foto']).startsWith('http'))) {
+                newRow['Foto'] = oldRow['Foto'];
+            }
+            merged[existIdx] = newRow;
+        } else {
+            // Data dari GAS yang belum ada di memori - tambahkan
+            merged.push(newRow);
         }
     });
-    return newData;
+    // Jaga data baru yang ada di memori tapi belum tersync ke GAS (PENDING)
+    (appData.produksi || []).forEach(function(localRow) {
+        var existInGas = newData.find(function(x) { return String(x.ID) === String(localRow.ID); });
+        if (!existInGas) {
+            var existInMerged = merged.find(function(x) { return String(x.ID) === String(localRow.ID); });
+            if (!existInMerged) merged.push(localRow);
+        }
+    });
+    return merged;
 }
 
 if (typeof google === 'undefined') {
@@ -298,9 +316,22 @@ if (typeof google === 'undefined') {
                         .then(res => res.json())
                         .then(data => { 
                             if(data && data.produksi && database) {
+                                // FIX: Merge data GAS ke appData yang sudah ada
+                                // Jangan replace total - data baru yang belum tersync ke GAS akan hilang!
                                 data.produksi = mergeProduksiData(data.produksi);
-                                appData = data; 
-                                database.ref('appData').set(sanitizeFbKeys(data)); 
+                                if (data.pelanggan && typeof cleanPhoneQuotes === 'function') {
+                                    data.pelanggan = cleanPhoneQuotes(data.pelanggan);
+                                }
+                                // Hanya update field lain (pelanggan, waktu, dll), produksi sudah di-merge
+                                appData.pelanggan = data.pelanggan || appData.pelanggan;
+                                appData.waktu = data.waktu || appData.waktu;
+                                appData.kiloan = data.kiloan || appData.kiloan;
+                                appData.satuan = data.satuan || appData.satuan;
+                                appData.pewangi = data.pewangi || appData.pewangi;
+                                appData.member = data.member || appData.member;
+                                appData.users = data.users || appData.users;
+                                appData.produksi = data.produksi; // sudah di-merge dengan data lokal
+                                database.ref('appData').set(sanitizeFbKeys(appData)); 
                             } 
                         })
                         .catch(e => console.log("Background sync terganggu."));
