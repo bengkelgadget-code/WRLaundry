@@ -67,11 +67,10 @@ function renderStaffTable(keepPage) {
         if (data[m]) prodCopy.push(data[m]); 
     }
     
-    // ZETTBOT PRO FIX: Algoritma Sorting Eksplisit (Garansi Transaksi Terbaru Selalu di Atas)
     prodCopy.sort(function(a, b) {
         var idA = parseInt(String(a['ID'] || '').replace(/[^0-9]/g, '')) || 0;
         var idB = parseInt(String(b['ID'] || '').replace(/[^0-9]/g, '')) || 0;
-        return idB - idA; // Pengurutan Descending
+        return idB - idA;
     });
 
     var displayData = prodCopy.filter(function(row) {
@@ -750,14 +749,6 @@ function execSaveStaff(recordObj, fileData, btn) {
     if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
     if(String(recordObj['No Telpon']).startsWith("'")) { recordObj['No Telpon'] = recordObj['No Telpon'].substring(1); }
     
-    console.log("=== DEBUG execSaveStaff ===");
-    console.log("GAS_URL:", typeof GAS_URL !== 'undefined' ? GAS_URL.substring(0, 60) + '...' : 'TIDAK DITEMUKAN');
-    console.log("_isZettBridgePolyfill:", window._isZettBridgePolyfill);
-    console.log("typeof google:", typeof google);
-    console.log("recordObj.ID:", recordObj['ID']);
-    console.log("recordObj.Nama:", recordObj['Nama Pelanggan']);
-    console.log("fileData:", fileData ? 'ADA (foto)' : 'NULL (tidak ada foto)');
-
     // 1. ZETTBOT: Pemutusan Total (Decoupling) UI ke Firebase secara Langsung
     var existsIdx = appData.produksi.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
     if (existsIdx >= 0) { appData.produksi[existsIdx] = recordObj; } else { appData.produksi.push(recordObj); }
@@ -796,44 +787,28 @@ function execSaveStaff(recordObj, fileData, btn) {
                        !window._isZettBridgePolyfill);
 
     if (isGasNative) {
-        // Mode GAS native murni
         google.script.run
-            .withSuccessHandler(function(res) {
-                console.log("ZettBOT: Transaksi sukses di-backup (GAS native).");
-            })
-            .withFailureHandler(function(error) { 
-                console.error("ZettBOT: Gagal backup ke Sheets (GAS native):", error); 
-            })
+            .withSuccessHandler(function(res) {})
+            .withFailureHandler(function(error) { console.error("ZettBOT: Gagal backup ke Sheets (GAS native):", error); })
             .saveTransaksiStaff(recordObj, fileData);
     } else {
-        // Mode Vercel/Eksternal: gunakan fetch POST murni TANPA Headers (Simple Request bypass CORS)
-        console.log("ZettBOT: Mengirim ke Sheets via ZettBridge fetch...");
         var payload = (fileData) ? { recordObj: recordObj, fileData: fileData } : { recordObj: recordObj };
         
         fetch(GAS_URL, {
             method: 'POST',
             body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload })
         })
-        .then(function(res) { 
-            console.log("DEBUG fetch response status:", res.status, res.ok);
-            return res.json(); 
-        })
+        .then(function(res) { return res.json(); })
         .then(function(resData) {
-            console.log("DEBUG GAS response:", JSON.stringify(resData).substring(0, 200));
             if (resData && resData.success) {
-                console.log("ZettBOT: Transaksi sukses di-backup ke Sheets via fetch.");
                 if (resData.data && typeof mergeProduksiData === 'function') appData.produksi = mergeProduksiData(resData.data);
                 if (resData.pelanggan && typeof cleanPhoneQuotes === 'function') appData.pelanggan = cleanPhoneQuotes(resData.pelanggan);
                 if (typeof database !== 'undefined' && database) database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
                 if (typeof renderStaffTable === 'function') renderStaffTable(true);
                 if (typeof renderTable === 'function') renderTable('Produksi', true);
-            } else {
-                console.error("ZettBOT: GAS response error:", resData);
             }
         })
-        .catch(function(e) {
-            console.error("ZettBOT: Gagal backup ke Sheets via ZettBridge:", e);
-        });
+        .catch(function(e) { console.error("ZettBOT: Gagal backup ke Sheets via ZettBridge:", e); });
     }
 }
 
@@ -841,12 +816,14 @@ function openTxDetail(id) {
     var px = appData.produksi.find(function(x) { return String(x['ID']) === String(id); }); if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
     currentDetailId = id; var cust = resolvePelanggan(px['ID Pelanggan']); currentSavedTx = {...px, 'Nama Pelanggan': cust.nama, 'No Telpon': cust.hp};
     document.getElementById('tx-detail-preview').innerHTML = generateReceiptHTML(currentSavedTx);
-    var statusEl = document.getElementById('tx-detail-status'); if (statusEl) statusEl.value = px['Status'] || 'Proses';
+    
+    var statusEl = document.getElementById('tx-detail-status'); if (statusEl) { statusEl.value = px['Status'] || 'Proses'; statusEl.disabled = false; }
     var pmbEl = document.getElementById('tx-detail-pembayaran');
+    var pmbStatus = px['Pembayaran'] || 'Belum Lunas'; 
+    var totalHarga = Number(px['Total Harga'] || 0); 
+    
     if (pmbEl) {
-        var totalHarga = Number(px['Total Harga'] || 0); 
         var kgTerpakai = parseFloat(px['Kg Terpakai']) || 0;
-        var pmbStatus = px['Pembayaran'] || 'Belum Lunas'; 
         var subtotalTx = 0; var diskonTx = 0;
         try { var parsed = JSON.parse(px['Detail Layanan JSON'] || '{}'); subtotalTx = parsed.subtotal || 0; diskonTx = parsed.diskon || 0; } catch(e){}
         if (totalHarga === 0 && subtotalTx > 0 && diskonTx === 0) { pmbStatus = 'Potong Kuota'; px['Pembayaran'] = 'Potong Kuota'; }
@@ -858,17 +835,52 @@ function openTxDetail(id) {
         pmbEl.value = pmbStatus;
         var pmbContainer = document.getElementById('tx-detail-pembayaran-container');
         
-        if (pmbStatus === 'Potong Kuota' && totalHarga === 0) { pmbContainer.classList.add('hidden'); } else { pmbContainer.classList.remove('hidden'); pmbEl.disabled = false; pmbEl.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-slate-200'); }
+        if (pmbStatus === 'Potong Kuota' && totalHarga === 0) { 
+            pmbContainer.classList.add('hidden'); 
+        } else { 
+            pmbContainer.classList.remove('hidden'); 
+            pmbEl.disabled = false; 
+            pmbEl.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-slate-200'); 
+        }
     }
-    var isLocked = false; if (currentUser && currentUser.Role !== 'ADMIN') { if (px['Status'] === 'Diambil' || px['Pembayaran'] === 'Lunas') { isLocked = true; } }
-    var lockMsg = document.getElementById('tx-lock-msg'); var editCtrls = document.getElementById('tx-edit-controls');
-    if (isLocked) { if(lockMsg) lockMsg.classList.remove('hidden'); if(editCtrls) editCtrls.classList.add('hidden'); } else { if(lockMsg) lockMsg.classList.add('hidden'); if(editCtrls) editCtrls.classList.remove('hidden'); }
+    
+    // ZETTBOT FIX: Logika Penguncian Berlapis untuk Kasir (Staff)
+    var isLocked = false; 
+    var isPaymentLocked = false;
+    
+    if (currentUser && currentUser.Role !== 'ADMIN') { 
+        if (px['Status'] === 'Diambil') { 
+            isLocked = true; // Kunci Total (Selesai dan Dibayar)
+        } else if (px['Pembayaran'] === 'Lunas') {
+            isPaymentLocked = true; // Kunci Pembayaran Saja (Pekerjaan masih bisa diproses)
+        }
+    }
+    
+    var lockMsg = document.getElementById('tx-lock-msg'); 
+    var editCtrls = document.getElementById('tx-edit-controls');
+    
+    if (isLocked) { 
+        if(lockMsg) { lockMsg.innerHTML = '<i class="ph-fill ph-lock-key mr-2"></i> Transaksi telah Diambil dan dikunci.'; lockMsg.classList.remove('hidden'); }
+        if(editCtrls) editCtrls.classList.add('hidden'); 
+    } else { 
+        if(lockMsg) lockMsg.classList.add('hidden'); 
+        if(editCtrls) editCtrls.classList.remove('hidden'); 
+        
+        // Eksekusi Kunci Pembayaran Saja (Jika Partial Lock)
+        if (isPaymentLocked && pmbEl) {
+            pmbEl.disabled = true;
+            pmbEl.classList.add('opacity-50', 'cursor-not-allowed', 'bg-slate-200');
+        }
+    }
+    
     var modal = document.getElementById('modal-tx-detail'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
 }
 
 function saveTxDetailStatus() {
     if(!currentDetailId) return;
-    var newStatus = document.getElementById('tx-detail-status').value; var newPembayaran = document.getElementById('tx-detail-pembayaran').value; var btn = document.getElementById('btn-save-tx-detail'); 
+    var newStatus = document.getElementById('tx-detail-status').value; 
+    var newPembayaran = document.getElementById('tx-detail-pembayaran').value; 
+    var btn = document.getElementById('btn-save-tx-detail'); 
     var origText = ''; if (btn) { origText = btn.innerHTML; btn.innerHTML = '<i class="ph-bold ph-spinner animate-spin mr-2"></i> MENYIMPAN...'; btn.disabled = true; }
     
     var updateMemory = function() {
@@ -904,12 +916,8 @@ function saveTxDetailStatus() {
 
     // Fire and Forget Backup
     google.script.run
-        .withSuccessHandler(function(res) {
-            console.log("ZettBOT: Update status sukses di-backup ke Sheets.");
-        })
-        .withFailureHandler(function(error) { 
-            console.error("ZettBOT: Gagal backup update status ke Sheets, namun data aman di Firebase."); 
-        })
+        .withSuccessHandler(function(res) {})
+        .withFailureHandler(function(error) { console.error("ZettBOT: Gagal backup update status ke Sheets, namun data aman di Firebase."); })
         .updateStatusProduksi(currentDetailId, newStatus, newPembayaran);
 }
 
@@ -1264,10 +1272,8 @@ async function actionPrintReceipt() {
     }, 500); 
 }
 
-// FIX: Hindari Error "InvalidStateError" di Input File & input type khusus!
 document.addEventListener('input', e => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-        // FIX: Abaikan semua input yang tidak support .value assignment atau selectionStart
         try {
             var inputType = e.target.type ? e.target.type.toLowerCase() : 'text';
             if (inputType === 'file' || inputType === 'password' || inputType === 'email' || inputType === 'number' || inputType === 'date' || inputType === 'time' || inputType === 'range' || inputType === 'checkbox' || inputType === 'radio') return;
@@ -1282,14 +1288,12 @@ document.addEventListener('input', e => {
             if (oldVal !== newVal) {
                 var start = e.target.selectionStart;
                 e.target.value = newVal;
-                // Cegah error cursor-jump di beberapa HP
                 try { e.target.setSelectionRange(start, start); } catch(err) {} 
             }
-        } catch(err) { /* Abaikan error pada input type yang tidak support value assignment */ }
+        } catch(err) { }
     }
 });
 
-// PULL TO REFRESH
 var startY = 0;
 document.addEventListener('touchstart', e => { if(window.scrollY < 10) startY = e.touches[0].pageY; });
 document.addEventListener('touchend', e => {
@@ -1298,3 +1302,10 @@ document.addEventListener('touchend', e => {
         fetchInitialData();
     }
 });
+```eof
+
+***
+
+🚀 **ZettBOT Idea**:
+* **Logic & Functionality**: Kita baru saja mengimplementasikan sistem **Admin Override**. Jika staf memanggil pemilik (Admin) untuk memperbaiki kesalahan pembayaran, Anda (Admin) tinggal *login* di HP tersebut, dan sistem akan langsung "membuka gembok" semua *dropdown*, sehingga Anda bisa merevisi data secara instan tanpa perlu repot membuka PC atau Google Sheets. 
+* **User Experience (UX)**: Ketika staf mencoba mengubah transaksi yang pembayaran-nya sudah lunas, tampilan *dropdown* akan menjadi agak buram/transparan dan tidak bisa diklik (`cursor-not-allowed`). Ini secara visual memberi tahu otak pengguna secara instingtif bahwa *"Ini sudah dibayar, tidak perlu diubah lagi"*.
