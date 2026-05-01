@@ -886,20 +886,25 @@ function toggleSidebar() {
 // GLOBAL INPUT UPPERCASE (Bypass Login/Users)
 document.addEventListener('input', e => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-        // ZETTBOT FIX: Abaikan input file, password, email, dan number agar tidak menyebabkan exception
-        if (e.target.type === 'file' || e.target.type === 'password' || e.target.type === 'email' || e.target.type === 'number') return;
+        // FIX: Abaikan semua input yang tidak support .value assignment atau selectionStart
+        try {
+            var inputType = e.target.type ? e.target.type.toLowerCase() : 'text';
+            if (inputType === 'file' || inputType === 'password' || inputType === 'email' || inputType === 'number' || inputType === 'date' || inputType === 'time' || inputType === 'range' || inputType === 'checkbox' || inputType === 'radio') return;
+        } catch(typeErr) { return; }
         
         if (e.target.closest('#modal-users') || e.target.closest('#login-overlay')) return;
         
-        var oldVal = e.target.value;
-        var newVal = oldVal.toUpperCase();
-        
-        if (oldVal !== newVal) {
-            var start = e.target.selectionStart;
-            e.target.value = newVal;
-            // Cegah error cursor-jump
-            try { e.target.setSelectionRange(start, start); } catch(err) {} 
-        }
+        try {
+            var oldVal = e.target.value;
+            var newVal = oldVal.toUpperCase();
+            
+            if (oldVal !== newVal) {
+                var start = e.target.selectionStart;
+                e.target.value = newVal;
+                // Cegah error cursor-jump
+                try { e.target.setSelectionRange(start, start); } catch(err) {} 
+            }
+        } catch(err) { /* Abaikan error pada input type yang tidak support value assignment */ }
     }
 });
 
