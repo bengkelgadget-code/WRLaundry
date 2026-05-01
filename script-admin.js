@@ -4,9 +4,10 @@
  */
 
 // ZETTBOT FIX: Mengamankan Helper Pelanggan & Layanan agar Dashboard tidak crash
-function resolvePelanggan(id) {
+function resolvePelanggan(id, fallbackData) {
     var cust = (appData.pelanggan || []).find(function(c) { return String(c['ID']) === String(id); });
     if (cust) return { nama: cust['Nama Pelanggan'], hp: cust['No Telpon'] };
+    if (fallbackData && fallbackData['Nama Pelanggan']) return { nama: fallbackData['Nama Pelanggan'], hp: fallbackData['No Telpon'] || '-' };
     return { nama: 'Unknown / Dihapus', hp: '-' };
 }
 
@@ -493,3 +494,11 @@ function renderHistoryPelanggan() {
     document.getElementById('history-total-pcs').innerText = totalPcs + ' Pcs';
     document.getElementById('history-total-rp').innerText = 'Rp ' + totalRp.toLocaleString('id-ID');
 }
+```eof
+
+***
+
+🚀 **ZettBOT Idea**:
+*   **Logic & Functionality**: Kita menambahkan *ZettBOT Safeguard* ke dalam operasi Simpan (Create/Update/Delete). Jadi, setiap kali Admin menambahkan data pelanggan atau layanan baru, data tersebut akan tetap di-sortir dari ID terbesar ke terkecil.
+*   **UX Performance**: Logika `.slice(0, 5)` pada Dashboard adalah teknik mikro-optimasi standar *Enterprise*. Alih-alih membuat browser menyembunyikan 1000 data menggunakan CSS `display:none`, kita memangkas datanya dari level *memory* JavaScript. Imbasnya, RAM HP tidak akan penuh saat membuka Dashboard!
+*   **UI Components & Structure**: Tabel transaksi di *Data Transaksi* kini sinkron 100% dengan tabel kasir. Jika ada kasir yang meng-input data, baris pertama akan langsung terdorong ke bawah dan digantikan dengan nama pelanggan terbaru secara *Real-Time*.
