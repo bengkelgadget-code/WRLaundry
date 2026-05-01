@@ -1,7 +1,5 @@
 // ZETTBOT HYBRID ENGINE: Auto-Switch Backend & Firebase RTDB
 // ====================================================================
-// PERHATIAN: Kita KEMBALI MENGGUNAKAN DIRECT GAS URL!
-// Ini akan men-bypass Vercel Proxy untuk menghindari Timeout 10 detik.
 const GAS_URL = "https://script.google.com/macros/s/AKfycbw4LsV2mB_x517QfNxQtA4AQmdYzyaUNPp0KCcC1F-_o-0wJtUaKYvdlqKmZcWBKq4Cyw/exec"; 
 
 const firebaseConfig = {
@@ -15,13 +13,11 @@ const firebaseConfig = {
     databaseURL: "https://kasirwaroeng-laundry-default-rtdb.asia-southeast1.firebasedatabase.app/" 
 };
 
-// Inisialisasi SDK Firebase
 if (typeof firebase !== 'undefined' && !firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }
 const database = (typeof firebase !== 'undefined') ? firebase.database() : null;
 
-// 🔥 FIREBASE KEY SANITIZER FIX
 function sanitizeFbKeys(data) {
     if (!data) return data;
     return JSON.parse(JSON.stringify(data).replace(/"Harga\/Kg":/g, '"Harga_Kg":').replace(/"Harga\/Pcs":/g, '"Harga_Pcs":'));
@@ -41,14 +37,13 @@ function cleanPhoneQuotes(arr) {
     });
 }
 
-// ZETTBOT PRO FIX: Global Centralized Sorter (Data Terbaru Selalu di Atas)
+// ZETTBOT PRO FIX: Global Centralized Sorter
 function sortDataByIdDesc(arr) {
     if (!arr || !Array.isArray(arr)) return arr;
     return arr.sort(function(a, b) {
-        // Ekstrak angka dari ID (misal: "TX-0014" -> 14, "WRL-002" -> 2)
         var idA = parseInt(String(a['ID'] || '').replace(/[^0-9]/g, '')) || 0;
         var idB = parseInt(String(b['ID'] || '').replace(/[^0-9]/g, '')) || 0;
-        return idB - idA; // Descending Order (Terbaru ke Terlama)
+        return idB - idA;
     });
 }
 
@@ -80,7 +75,6 @@ function mergeProduksiData(newData) {
         }
     });
     
-    // Pastikan hasil merge langsung disorting!
     return sortDataByIdDesc(merged);
 }
 
@@ -102,14 +96,12 @@ if (typeof google === 'undefined') {
                                 if (snapshot.exists() && snapshot.val().produksi) {
                                     console.log("⚡ Memuat dari Firebase Instan");
                                     appData = restoreFbKeys(snapshot.val());
-                                    // Sortir Global saat data dimuat
                                     ['produksi', 'pelanggan', 'waktu', 'kiloan', 'satuan', 'pewangi', 'member', 'users'].forEach(function(k) {
                                         if (appData[k]) appData[k] = sortDataByIdDesc(appData[k]);
                                     });
                                     if(this._onSuccess) this._onSuccess(appData);
                                     this._backgroundSyncGasToFirebase();
                                 } else {
-                                    console.log("⏳ Firebase Kosong, menarik data dari Sheets...");
                                     this._fetchFromGas();
                                 }
                             }).catch(e => { this._fetchFromGas(); });
@@ -134,13 +126,11 @@ if (typeof google === 'undefined') {
                                 data.produksi = mergeProduksiData(data.produksi);
                                 appData = data; 
                                 if(database) database.ref('appData').set(sanitizeFbKeys(data)); 
-                                console.log("✅ Migrasi Data ke Firebase Berhasil!"); 
                             }
                             if(this._onSuccess) this._onSuccess(data);
                         })
                         .catch(err => {
-                            console.error("❌ ZettBridge Fetch Error:", err);
-                            if(this._onFailure) this._onFailure("Koneksi gagal. Cek Deployment Google Apps Script!");
+                            if(this._onFailure) this._onFailure("Koneksi gagal.");
                         });
                     },
 
@@ -162,7 +152,7 @@ if (typeof google === 'undefined') {
                         data['ID'] = prefix + '-' + String(maxNum + 1).padStart(4, '0');
                         
                         appData[key].push(data);
-                        appData[key] = sortDataByIdDesc(appData[key]); // ZETTBOT: Sort setelah nambah data
+                        appData[key] = sortDataByIdDesc(appData[key]); 
                         
                         if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
                         if (this._onSuccess) this._onSuccess({ success: true, message: "Data Tersimpan (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
@@ -174,7 +164,7 @@ if (typeof google === 'undefined') {
                         }).then(resData => {
                             if (resData.success && resData.data) {
                                 appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
-                                appData[key] = sortDataByIdDesc(appData[key]); // Ensure sorted
+                                appData[key] = sortDataByIdDesc(appData[key]);
                                 if(resData.pelanggan) appData.pelanggan = sortDataByIdDesc(cleanPhoneQuotes(resData.pelanggan));
                                 if(database) database.ref('appData').set(sanitizeFbKeys(appData));
                                 
@@ -284,13 +274,8 @@ if (typeof google === 'undefined') {
                             rec['No Nota'] = notaPrefix + String(maxNota+1).padStart(3,'0');
                         }
                         
-                        if (!rec['Status']) {
-                            rec['Status'] = 'Proses';
-                        }
-
-                        if (!rec['Waktu Masuk']) {
-                            rec['Waktu Masuk'] = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
-                        }
+                        if (!rec['Status']) { rec['Status'] = 'Proses'; }
+                        if (!rec['Waktu Masuk']) { rec['Waktu Masuk'] = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date()); }
                         
                         if (rec['Pembayaran'] === 'Potong Kuota' && rec['Kg Terpakai']) {
                             let cust = appData.pelanggan.find(p => p && p['Nama Pelanggan'] === rec['Nama Pelanggan']);
@@ -300,7 +285,7 @@ if (typeof google === 'undefined') {
                         let exists = appData.produksi.findIndex(x => x && x.ID === rec.ID);
                         if (exists >= 0) appData.produksi[exists] = rec; else appData.produksi.push(rec);
                         
-                        appData.produksi = sortDataByIdDesc(appData.produksi); // ZETTBOT: Sort Central
+                        appData.produksi = sortDataByIdDesc(appData.produksi);
                         
                         if(database) database.ref('appData').set(sanitizeFbKeys(appData));
                         
@@ -371,10 +356,9 @@ if (typeof google === 'undefined') {
                                     appData.users = data.users || appData.users;
                                     appData.produksi = data.produksi;
                                     database.ref('appData').set(sanitizeFbKeys(appData)); 
-                                    console.log("✅ Background sync (POST) sukses!");
                                 }
                             })
-                            .catch(e => console.log("ℹ️ ZettBridge Info: Sinkronisasi Sheets ditunda. Data realtime aman di Firebase."));
+                            .catch(e => console.log("ℹ️ ZettBridge Info: Sinkronisasi tertunda."));
                         }, 5000);
                     }
                 };
@@ -383,11 +367,6 @@ if (typeof google === 'undefined') {
     };
 }
 // ====================================================================
-
-/**
- * ZETTBOT - SCRIPT CORE
- * Berisi Variabel Global, Utilitas, Navigasi, dan Inisialisasi Sistem
- */
 
 var appData = { produksi: [], pelanggan: [], waktu: [], kiloan: [], satuan: [], pewangi: [], member: [], users: [] };
 var tsInstances = {};
@@ -402,15 +381,7 @@ var isFormPopulating = false;
 var zettConfirmCallback = null;
 
 var pageConfig = {
-    'Produksi': { page: 1, limit: 15 },
-    'Pelanggan': { page: 1, limit: 15 },
-    'LayananWaktu': { page: 1, limit: 15 },
-    'LayananKiloan': { page: 1, limit: 15 },
-    'LayananSatuan': { page: 1, limit: 15 },
-    'LayananPewangi': { page: 1, limit: 15 },
-    'LayananMember': { page: 1, limit: 15 },
-    'Users': { page: 1, limit: 15 },
-    'Staff': { page: 1, limit: 20 }
+    'Produksi': { page: 1, limit: 15 }, 'Pelanggan': { page: 1, limit: 15 }, 'LayananWaktu': { page: 1, limit: 15 }, 'LayananKiloan': { page: 1, limit: 15 }, 'LayananSatuan': { page: 1, limit: 15 }, 'LayananPewangi': { page: 1, limit: 15 }, 'LayananMember': { page: 1, limit: 15 }, 'Users': { page: 1, limit: 15 }, 'Staff': { page: 1, limit: 20 }
 };
 
 var appSettings = { nama: 'Waroenk Laundry', alamat: 'Jl. Markisa No 52 Rt 05, Tenggarong', logo: '' };
@@ -503,17 +474,14 @@ function getDriveDirectUrl(url) {
 function makeTextFlexible(elementId) {
     var el = document.getElementById(elementId);
     if (!el) return;
-    
     el.classList.remove('truncate');
     el.style.whiteSpace = 'nowrap'; 
     el.style.transition = 'font-size 0.2s ease-out';
-    
     function resizeFont() {
         el.style.fontSize = '1.875rem';
         var parent = el.parentElement;
         if (!parent) return;
         var maxWidth = parent.clientWidth;
-        
         if (el.scrollWidth > maxWidth && maxWidth > 0) {
             var currentSize = parseFloat(window.getComputedStyle(el).fontSize);
             var newSize = currentSize * (maxWidth / el.scrollWidth) * 0.95;
@@ -521,7 +489,6 @@ function makeTextFlexible(elementId) {
             el.style.fontSize = newSize + 'px';
         }
     }
-
     setTimeout(resizeFont, 100);
     var observer = new MutationObserver(function() { setTimeout(resizeFont, 50); });
     observer.observe(el, { characterData: true, childList: true, subtree: true });
@@ -555,35 +522,23 @@ function generatePaginationHTML(view, totalItems) {
     var limit = pageConfig[view].limit;
     var currentPage = pageConfig[view].page;
     var totalPages = Math.ceil(totalItems / limit);
-    
     if (currentPage > totalPages && totalPages > 0) { pageConfig[view].page = 1; currentPage = 1; }
 
     var html = '<div class="flex flex-col sm:flex-row items-center justify-between w-full px-4 py-3 sm:py-3.5 bg-slate-50 border-t border-slate-200 rounded-b-2xl shrink-0 gap-3 relative z-[30] shadow-[0_-4px_10px_-4px_rgba(0,0,0,0.05)]">';
-
     html += '<div class="flex items-center justify-between sm:justify-start w-full sm:w-auto gap-3">';
     html += '<div class="text-[11px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">Hal <span class="font-black text-teal-600">' + currentPage + '</span> / ' + Math.max(1, totalPages) + '</div>';
-    
     html += '<div class="flex items-center gap-2">';
     html += '<span class="text-[10px] font-bold text-slate-400 uppercase hidden sm:inline">Tampilkan:</span>';
     html += '<select onchange="changeLimit(\'' + view + '\', this.value)" class="text-xs font-bold text-slate-700 border border-slate-300 rounded-lg px-2 py-1.5 bg-white shadow-sm outline-none focus:ring-2 focus:ring-teal-400 cursor-pointer hover:bg-slate-50 transition-colors">';
-    [15, 25, 50, 100].forEach(function(val) {
-        html += '<option value="' + val + '" ' + (limit == val ? 'selected' : '') + '>' + val + ' Baris</option>';
-    });
-    html += '</select>';
-    html += '</div>';
-    html += '</div>';
-
+    [15, 25, 50, 100].forEach(function(val) { html += '<option value="' + val + '" ' + (limit == val ? 'selected' : '') + '>' + val + ' Baris</option>'; });
+    html += '</select></div></div>';
     html += '<div class="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-2">';
     html += '<p class="text-[10px] font-bold text-slate-400 uppercase hidden md:block mr-2">Total: <span class="text-slate-600">' + totalItems + ' Data</span></p>';
-
     var prevDisabled = currentPage <= 1 ? 'disabled class="opacity-50 cursor-not-allowed px-4 py-2 border border-slate-200 rounded-xl text-xs font-bold bg-slate-100 text-slate-400"' : 'onclick="changePage(\''+view+'\', '+(currentPage-1)+')" class="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold bg-white text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 transition-all cursor-pointer"';
     html += '<button type="button" ' + prevDisabled + '><i class="ph-bold ph-caret-left mr-1"></i> Prev</button>';
-
     var nextDisabled = currentPage >= totalPages ? 'disabled class="opacity-50 cursor-not-allowed px-4 py-2 border border-slate-200 rounded-xl text-xs font-bold bg-slate-100 text-slate-400"' : 'onclick="changePage(\''+view+'\', '+(currentPage+1)+')" class="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold bg-white text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 transition-all cursor-pointer"';
     html += '<button type="button" ' + nextDisabled + '>Next <i class="ph-bold ph-caret-right ml-1"></i></button>';
-    
     html += '</div></div>';
-
     return html;
 }
 
@@ -605,7 +560,6 @@ function openModal(modalId) {
     }
     setTimeout(function() { 
         isFormPopulating = false; 
-        var modal = document.getElementById(modalId);
         if(modal) {
             var firstInput = modal.querySelector('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])');
             if(firstInput) {
@@ -707,10 +661,8 @@ document.addEventListener('DOMContentLoaded', function() {
         modalScrollArea.addEventListener('focus', function(e) {
             var target = e.target;
             if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') {
-                
                 var executeScroll = function() {
                     var wrapper = target.closest('.ts-wrapper') ? target.closest('.ts-wrapper').parentElement : (target.closest('[id^="staff-srv-row-"]') || target.closest('.mb-4') || target); 
-                    
                     if (wrapper && modalScrollArea) { 
                         var rect = wrapper.getBoundingClientRect();
                         var scrollRect = modalScrollArea.getBoundingClientRect();
@@ -721,14 +673,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         });
                     }
                 };
-
                 setTimeout(executeScroll, 250); 
                 setTimeout(executeScroll, 600); 
             }
         }, true);
     }
 
-    // ZETTBOT FIX: Pastikan Listener Firebase Langsung Memanggil Global Sorting!
     if (typeof database !== 'undefined' && database) {
         let isFirstRealtimeFire = true;
         database.ref('appData').on('value', function(snapshot) {
@@ -748,7 +698,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     newData.produksi = mergeProduksiData(newData.produksi);
                 }
                 
-                // ZETTBOT Sorter: Selalu Rapikan Semua Data Berdasarkan ID Terbesar
                 ['produksi', 'pelanggan', 'waktu', 'kiloan', 'satuan', 'pewangi', 'member', 'users'].forEach(function(k) {
                     if (newData[k]) newData[k] = sortDataByIdDesc(newData[k]);
                 });
@@ -804,7 +753,6 @@ function fetchInitialData() {
             if (!appData.member) appData.member = [];
             if (!appData.users) appData.users = [];
             
-            // ZETTBOT: Lakukan Sorting Awal Saat Refresh Web Pertama Kali
             ['produksi', 'pelanggan', 'waktu', 'kiloan', 'satuan', 'pewangi', 'member', 'users'].forEach(function(k) {
                 if (appData[k]) appData[k] = sortDataByIdDesc(appData[k]);
             });
@@ -863,8 +811,6 @@ function executeLogin(user) {
     
     if (typeof renderStaffTable === 'function') { 
         renderStaffTable(true); 
-    } else { 
-        console.warn("ZettBOT Warning: renderStaffTable tidak ditemukan."); 
     }
     
     if(user.Role === 'STAFF') { switchView('staff'); } 
@@ -993,7 +939,6 @@ document.addEventListener('input', e => {
     }
 });
 
-// PULL TO REFRESH
 var startY = 0;
 document.addEventListener('touchstart', e => { if(window.scrollY < 10) startY = e.touches[0].pageY; });
 document.addEventListener('touchend', e => {
@@ -1002,13 +947,3 @@ document.addEventListener('touchend', e => {
         fetchInitialData();
     }
 });
-```eof
-
-Silakan perbarui file tersebut dan *push* ke Vercel Anda. Dijamin 100% semua halaman Anda (dari Dashboard, Pelanggan, sampai Transaksi) akan tampil dengan transaksi/data terbaru selalu gagah di urutan nomor satu!
-
-***
-
-🚀 **ZettBOT Idea**:
-* **Logic & Functionality**: Di masa depan, karena kita mengurutkan transaksi dari angka terbesar (`TX-0014`, `TX-0013`, dst.), kita sangat siap untuk menerapkan *Infinite Scroll* (Pemuatan Otomatis Tanpa Batas). Saat admin menggulir ke bawah, sistem baru akan menarik 15 data berikutnya secara *lazy load*, membuat memori HP pengguna tetap lega.
-* **UX Performance**: Dengan menyortir data tepat di jantung aplikasi (`appData`), fungsi `renderTable()` di setiap UI menjadi sangat ringan karena mereka hanya perlu menjalankan perulangan *Render List* tanpa menghabiskan CPU untuk memikirkan matematika *sorting*. 
-* **Visual Effect**: Bila ada waktu, Anda dapat menambahkan efek pulsa hijau (Tailwind `animate-pulse text-green-500`) pada baris pesanan berstatus *Proses* di halaman Data Transaksi. Mata Admin akan langsung bisa mendeteksi pekerjaan yang belum dikerjakan.
