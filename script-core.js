@@ -108,7 +108,11 @@ if (typeof google === 'undefined') {
                     },
 
                     _fetchFromGas: function() {
-                        fetch(GAS_URL + "?action=getInitialData&t=" + new Date().getTime(), { method: 'GET' })
+                        // ZETTBOT FIX: Ganti GET menjadi POST Murni tanpa Headers agar tidak diblokir CORS
+                        fetch(GAS_URL, { 
+                            method: 'POST',
+                            body: JSON.stringify({ action: 'getInitialData', payload: {} }) 
+                        })
                         .then(res => {
                             if (!res.ok) throw new Error("HTTP Error " + res.status);
                             return res.json();
@@ -123,29 +127,9 @@ if (typeof google === 'undefined') {
                             }
                             if(this._onSuccess) this._onSuccess(data);
                         })
-                        .catch(err => { 
-                            console.log("ℹ️ GET Gagal (CORS/Timeout), mencoba POST fallback...", err.message);
-                            fetch(GAS_URL, { 
-                                method: 'POST', 
-                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                                body: JSON.stringify({ action: 'getInitialData', payload: {} }) 
-                            })
-                            // ZETTBOT FIX: Hindari Error Valid JSON Jika HTTP 500
-                            .then(res => {
-                                if (!res.ok) throw new Error("HTTP Error " + res.status);
-                                return res.json();
-                            })
-                            .then(data => {
-                                if(data && data.produksi) { 
-                                    data.produksi = mergeProduksiData(data.produksi);
-                                    appData = data; 
-                                    if(database) database.ref('appData').set(sanitizeFbKeys(data)); 
-                                }
-                                if(this._onSuccess) this._onSuccess(data);
-                            }).catch(e => {
-                                console.error("❌ ZettBridge POST Error:", e);
-                                if(this._onFailure) this._onFailure("Koneksi gagal. Cek Deployment Google Apps Script!");
-                            });
+                        .catch(err => {
+                            console.error("❌ ZettBridge Fetch Error:", err);
+                            if(this._onFailure) this._onFailure("Koneksi gagal. Cek Deployment Google Apps Script!");
                         });
                     },
 
@@ -171,7 +155,8 @@ if (typeof google === 'undefined') {
                         if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
                         if (this._onSuccess) this._onSuccess({ success: true, message: "Data Tersimpan (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
                         
-                        fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
+                        // ZETTBOT FIX: Hapus headers agar menjadi Simple Request
+                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
                         .then(res => {
                             if (!res.ok) throw new Error("HTTP Error " + res.status);
                             return res.json();
@@ -197,7 +182,8 @@ if (typeof google === 'undefined') {
                         }
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Data Diupdate (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
                         
-                        fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateRecord', payload: {sheetName: sheet, id: id, data: data} }) })
+                        // ZETTBOT FIX: Hapus headers agar menjadi Simple Request
+                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'updateRecord', payload: {sheetName: sheet, id: id, data: data} }) })
                         .then(res => {
                             if (!res.ok) throw new Error("HTTP Error " + res.status);
                             return res.json();
@@ -222,7 +208,8 @@ if (typeof google === 'undefined') {
                         }
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Terhapus (Instan)!", data: appData[key] });
                         
-                        fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'deleteRecord', payload: {sheetName: sheet, id: id} }) })
+                        // ZETTBOT FIX: Hapus headers agar menjadi Simple Request
+                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteRecord', payload: {sheetName: sheet, id: id} }) })
                         .then(res => {
                             if (!res.ok) throw new Error("HTTP Error " + res.status);
                             return res.json();
@@ -305,7 +292,8 @@ if (typeof google === 'undefined') {
                         if (this._onSuccess) this._onSuccess({ success: true, message: "Transaksi Tersimpan Cepat!", data: appData.produksi, pelanggan: appData.pelanggan, notaInfo: rec });
                         
                         var gasPayload = { recordObj: rec, fileData: (payload.fileData || null) };
-                        fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveTransaksiStaff', payload: gasPayload }) })
+                        // ZETTBOT FIX: Hapus headers agar menjadi Simple Request
+                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'saveTransaksiStaff', payload: gasPayload }) })
                         .then(res => {
                             if (!res.ok) throw new Error("HTTP Error " + res.status);
                             return res.json();
@@ -328,7 +316,8 @@ if (typeof google === 'undefined') {
                         if(database) database.ref('appData/produksi').set(sanitizeFbKeys(appData.produksi));
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Status Diperbarui!", data: appData.produksi });
                         
-                        fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateStatusProduksi', payload: {id: id, status: status, pmbStatus: pmbStatus} }) })
+                        // ZETTBOT FIX: Hapus headers agar menjadi Simple Request
+                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'updateStatusProduksi', payload: {id: id, status: status, pmbStatus: pmbStatus} }) })
                         .then(res => {
                             if (!res.ok) throw new Error("HTTP Error " + res.status);
                             return res.json();
@@ -346,44 +335,16 @@ if (typeof google === 'undefined') {
 
                     _backgroundSyncGasToFirebase: function() {
                         setTimeout(() => {
-                            var syncPostFallback = () => {
-                                fetch(GAS_URL, { 
-                                    method: 'POST', 
-                                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                                    body: JSON.stringify({ action: 'getInitialData', payload: {} }) 
-                                })
-                                .then(res => {
-                                    if (!res.ok) throw new Error("HTTP Error " + res.status);
-                                    return res.json();
-                                })
-                                .then(data => {
-                                    if(data && data.produksi && database) {
-                                        data.produksi = mergeProduksiData(data.produksi);
-                                        if (data.pelanggan && typeof cleanPhoneQuotes === 'function') {
-                                            data.pelanggan = cleanPhoneQuotes(data.pelanggan);
-                                        }
-                                        appData.pelanggan = data.pelanggan || appData.pelanggan;
-                                        appData.waktu = data.waktu || appData.waktu;
-                                        appData.kiloan = data.kiloan || appData.kiloan;
-                                        appData.satuan = data.satuan || appData.satuan;
-                                        appData.pewangi = data.pewangi || appData.pewangi;
-                                        appData.member = data.member || appData.member;
-                                        appData.users = data.users || appData.users;
-                                        appData.produksi = data.produksi;
-                                        database.ref('appData').set(sanitizeFbKeys(appData)); 
-                                        console.log("✅ Background sync (POST fallback) sukses!");
-                                    }
-                                })
-                                .catch(e => console.log("ℹ️ ZettBridge Info: Fetch latar belakang tertunda. Data aman di Firebase."));
-                            };
-
-                            fetch(GAS_URL + "?action=getInitialData&t=" + new Date().getTime(), { method: 'GET' })
+                            // ZETTBOT FIX: Gunakan POST murni secara default.
+                            fetch(GAS_URL, { 
+                                method: 'POST', 
+                                body: JSON.stringify({ action: 'getInitialData', payload: {} }) 
+                            })
                             .then(res => {
                                 if (!res.ok) throw new Error("HTTP Error " + res.status);
                                 return res.json();
                             })
-                            .then(data => { 
-                                if (data && data.error) throw new Error(data.message || "Proxy Error");
+                            .then(data => {
                                 if(data && data.produksi && database) {
                                     data.produksi = mergeProduksiData(data.produksi);
                                     if (data.pelanggan && typeof cleanPhoneQuotes === 'function') {
@@ -396,15 +357,12 @@ if (typeof google === 'undefined') {
                                     appData.pewangi = data.pewangi || appData.pewangi;
                                     appData.member = data.member || appData.member;
                                     appData.users = data.users || appData.users;
-                                    appData.produksi = data.produksi; 
+                                    appData.produksi = data.produksi;
                                     database.ref('appData').set(sanitizeFbKeys(appData)); 
-                                    console.log("✅ Background sync GET sukses!");
-                                } 
+                                    console.log("✅ Background sync (POST) sukses!");
+                                }
                             })
-                            .catch(e => {
-                                console.log("ℹ️ ZettBridge Info: Rute GET ditolak (CORS), mencoba rute POST murni...");
-                                syncPostFallback();
-                            });
+                            .catch(e => console.log("ℹ️ ZettBridge Info: Sinkronisasi Sheets ditunda. Data realtime aman di Firebase."));
                         }, 5000);
                     }
                 };
