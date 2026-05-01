@@ -1236,6 +1236,16 @@ async function actionPrintReceipt(idOverride) {
 }
 
 // FIX: Hindari Error "InvalidStateError" di Input File & input type khusus!
+document.addEventListener('input', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        try {
+            var inputType = e.target.type ? e.target.type.toLowerCase() : 'text';
+            if (inputType === 'file' || inputType === 'password' || inputType === 'email' || inputType === 'number' || inputType === 'date' || inputType === 'time' || inputType === 'range' || inputType === 'checkbox' || inputType === 'radio') return;
+        } catch(typeErr) { return; }
+        
+        if (e.target.closest('#modal-users') || e.target.closest('#login-overlay')) return;
+        
+        try {
             var oldVal = e.target.value;
             var newVal = oldVal.toUpperCase();
             
@@ -1245,14 +1255,5 @@ async function actionPrintReceipt(idOverride) {
                 try { e.target.setSelectionRange(start, start); } catch(err) {} 
             }
         } catch(err) { }
-    }
-});
-
-var startY = 0;
-document.addEventListener('touchstart', e => { if(window.scrollY < 10) startY = e.touches[0].pageY; });
-document.addEventListener('touchend', e => {
-    if(window.scrollY < 10 && e.changedTouches[0].pageY - startY > 150) {
-        showToast("Menyegarkan data...");
-        fetchInitialData();
     }
 });
