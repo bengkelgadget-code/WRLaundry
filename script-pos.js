@@ -741,7 +741,6 @@ function execSaveStaff(recordObj, fileData, btn) {
     if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
     if(String(recordObj['No Telpon']).startsWith("'")) { recordObj['No Telpon'] = recordObj['No Telpon'].substring(1); }
     
-    // DEBUG: Tampilkan info detail di console
     console.log("=== DEBUG execSaveStaff ===");
     console.log("GAS_URL:", typeof GAS_URL !== 'undefined' ? GAS_URL.substring(0, 60) + '...' : 'TIDAK DITEMUKAN');
     console.log("_isZettBridgePolyfill:", window._isZettBridgePolyfill);
@@ -780,7 +779,6 @@ function execSaveStaff(recordObj, fileData, btn) {
     showSuccessModal();
 
     // 3. FIX: Deteksi mode GAS native vs Vercel/ZettBridge
-    // GAS native HANYA jika ada google.script.run.withSuccessHandler DAN bukan ZettBridge polyfill
     var isGasNative = (typeof google !== 'undefined' && 
                        google.script && 
                        typeof google.script.run === 'object' &&
@@ -789,7 +787,7 @@ function execSaveStaff(recordObj, fileData, btn) {
                        !window._isZettBridgePolyfill);
 
     if (isGasNative) {
-        // Mode GAS native murni (deploy langsung dari GAS, bukan Vercel)
+        // Mode GAS native murni
         google.script.run
             .withSuccessHandler(function(res) {
                 console.log("ZettBOT: Transaksi sukses di-backup (GAS native).");
@@ -799,14 +797,12 @@ function execSaveStaff(recordObj, fileData, btn) {
             })
             .saveTransaksiStaff(recordObj, fileData);
     } else {
-        // Mode Vercel/Eksternal: gunakan fetch langsung ke GAS_URL
+        // Mode Vercel/Eksternal: gunakan fetch POST murni TANPA Headers (Simple Request bypass CORS)
         console.log("ZettBOT: Mengirim ke Sheets via ZettBridge fetch...");
         var payload = (fileData) ? { recordObj: recordObj, fileData: fileData } : { recordObj: recordObj };
-        console.log("DEBUG fetch payload keys:", Object.keys(payload));
-        console.log("DEBUG GAS_URL fetch ke:", typeof GAS_URL !== 'undefined' ? GAS_URL.substring(0,80) : 'UNDEFINED');
+        
         fetch(GAS_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload })
         })
         .then(function(res) { 
@@ -827,7 +823,6 @@ function execSaveStaff(recordObj, fileData, btn) {
             }
         })
         .catch(function(e) {
-            console.error("DEBUG fetch GAGAL total:", e.message, e);
             console.error("ZettBOT: Gagal backup ke Sheets via ZettBridge:", e);
         });
     }
