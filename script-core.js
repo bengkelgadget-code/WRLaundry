@@ -71,6 +71,7 @@ function mergeProduksiData(newData) {
 
 if (typeof google === 'undefined') {
     console.log("🌐 Berjalan di Vercel/Eksternal - ZettBridge Hybrid Aktif!");
+    window._isZettBridgePolyfill = true; // FIX: Tandai ini bukan GAS native
     window.google = {
         script: {
             get run() {
