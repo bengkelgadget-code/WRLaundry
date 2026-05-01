@@ -1148,35 +1148,79 @@ function actionSendWA(idOverride) {
     var namaToko = typeof appSettings !== 'undefined' && appSettings.nama ? appSettings.nama : 'Waroenk Laundry';
     var txt = '';
 
-    var sisaBayar = Number(tx['Sisa Bayar'] !== undefined ? tx['Sisa Bayar'] : (tx['Total Harga'] || 0));
+    var totalHarga = Number(tx['Total Harga'] || 0);
+    var sisaBayar = Number(tx['Sisa Bayar'] !== undefined ? tx['Sisa Bayar'] : totalHarga);
+    var dp = Number(tx['DP'] || 0);
     var pmbStatus = tx['Pembayaran'] || 'Belum Lunas';
+    var noNota = tx['No Nota'] || tx['ID'];
+    var tglMasuk = tx['Waktu Masuk'] ? String(tx['Waktu Masuk']).split(' ')[0] : '-';
 
     if (tx['Status'] === 'Selesai') {
-        txt = 'Halo Kak *' + cust.nama + '*,\n\n';
-        txt += 'Cucian kakak dengan No Nota *' + (tx['No Nota'] || tx['ID']) + '* sudah *SELESAI* dan siap untuk diambil di *' + namaToko + '*.\n\n';
-        txt += 'Total Tagihan: *Rp ' + Number(tx['Total Harga'] || 0).toLocaleString('id-ID') + '*\n';
-        txt += 'Status Pembayaran: *' + pmbStatus + '*\n';
-        if (pmbStatus !== 'Lunas' && pmbStatus !== 'Potong Kuota' && sisaBayar > 0) {
-            txt += 'Sisa Tagihan: *Rp ' + sisaBayar.toLocaleString('id-ID') + '*\n';
-        }
-        txt += '\nTerima kasih, ditunggu kedatangannya!';
-    } else {
-        txt = 'Halo Kak *' + cust.nama + '*,\n\n';
-        txt += 'Terima kasih telah mempercayakan cucian kakak di *' + namaToko + '*.\n\n';
-        txt += 'No Nota: *' + (tx['No Nota'] || tx['ID']) + '*\n';
+        txt = 'Halo Kak *' + cust.nama + '* 👋\n\n';
+        txt += 'Kabar gembira! 🎉 Cucian kakak dengan No Nota *' + noNota + '* sudah *SELESAI* dan siap dijemput di *' + namaToko + '* 🧺✨\n\n';
         
-        var detailLayanan = tx['Layanan'] || '';
-        if (typeof resolveLayananNameForProduksi === 'function') {
-            detailLayanan = resolveLayananNameForProduksi(tx['Layanan']);
-        }
-        txt += 'Layanan: *' + detailLayanan.replace(/\+/g, ', ') + '*\n';
-        txt += 'Total Tagihan: *Rp ' + Number(tx['Total Harga'] || 0).toLocaleString('id-ID') + '*\n';
+        txt += '💰 *INFO TAGIHAN*\n';
+        txt += 'Total Biaya: *Rp ' + totalHarga.toLocaleString('id-ID') + '*\n';
         txt += 'Status Pembayaran: *' + pmbStatus + '*\n';
         if (pmbStatus !== 'Lunas' && pmbStatus !== 'Potong Kuota' && sisaBayar > 0) {
             txt += 'Sisa Tagihan: *Rp ' + sisaBayar.toLocaleString('id-ID') + '*\n';
         }
-        txt += 'Status Cucian: *' + (tx['Status'] || 'Proses') + '*\n\n';
-        txt += 'Kami akan mengabari kakak kembali jika cucian sudah selesai. Terima kasih!';
+        
+        txt += '\nDitunggu kedatangannya ya Kak. Terima kasih! 🙏';
+    } else {
+        var items = [];
+        var diskonTx = 0;
+        var subtotalTx = totalHarga;
+        var kgTerpakai = parseFloat(tx['Kg Terpakai']) || 0;
+
+        try {
+            var parsed = JSON.parse(tx['Detail Layanan JSON'] || '{}');
+            items = Array.isArray(parsed) ? parsed : (parsed.items || []);
+            diskonTx = parsed.diskon || 0;
+            subtotalTx = parsed.subtotal || totalHarga;
+        } catch(e) {}
+
+        txt = 'Halo Kak *' + cust.nama + '* 👋\n\n';
+        txt += 'Terima kasih telah mempercayakan cuciannya di *' + namaToko + '* 🙏\n\n';
+        
+        txt += '📄 *DETAIL TRANSAKSI*\n';
+        txt += 'No Nota: *' + noNota + '*\n';
+        txt += 'Tgl Masuk: *' + tglMasuk + '*\n\n';
+        
+        txt += '🧺 *RINCIAN LAYANAN*\n';
+        if (items.length > 0) {
+            items.forEach(function(item) {
+                if (pmbStatus === 'Potong Kuota' && item.satuan === 'Kg') {
+                    txt += '- ' + item.nama + ' (' + item.qty + ' ' + item.satuan + ')\n';
+                } else {
+                    txt += '- ' + item.nama + ' (' + item.qty + ' ' + item.satuan + ' x ' + Number(item.subtotal/item.qty).toLocaleString('id-ID') + ') = Rp ' + Number(item.subtotal).toLocaleString('id-ID') + '\n';
+                }
+            });
+        } else {
+            txt += '- ' + (tx['Layanan'] || '').replace(/\+/g, '\n- ') + '\n';
+        }
+        
+        txt += '\n======================\n';
+        if (pmbStatus !== 'Potong Kuota' || totalHarga > 0) {
+            if (items.length > 0) txt += 'Subtotal: Rp ' + Number(subtotalTx).toLocaleString('id-ID') + '\n';
+            if (diskonTx > 0) txt += 'Diskon: - Rp ' + diskonTx.toLocaleString('id-ID') + '\n';
+            txt += '*Total Harga: Rp ' + totalHarga.toLocaleString('id-ID') + '*\n';
+        } else {
+            txt += '*Pemotongan Kuota Member: ' + kgTerpakai + ' Kg*\n';
+        }
+        txt += '======================\n\n';
+        
+        txt += '💰 *STATUS PEMBAYARAN*\n';
+        txt += 'Status: *' + pmbStatus + '*\n';
+        if (pmbStatus === 'DP') {
+            txt += 'DP: Rp ' + dp.toLocaleString('id-ID') + '\n';
+            txt += 'Sisa Tagihan: *Rp ' + sisaBayar.toLocaleString('id-ID') + '*\n';
+        } else if (pmbStatus === 'Belum Lunas' && totalHarga > 0) {
+            txt += 'Sisa Tagihan: *Rp ' + sisaBayar.toLocaleString('id-ID') + '*\n';
+        }
+        
+        txt += '\n⚙️ *Status Cucian:* _' + (tx['Status'] || 'Proses') + '_\n\n';
+        txt += '_Kami akan mengabari kakak kembali jika cucian sudah selesai. Terima kasih!_ ✨';
     }
 
     var url = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(txt);
