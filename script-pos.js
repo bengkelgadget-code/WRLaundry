@@ -62,9 +62,19 @@ function renderStaffTable(keepPage) {
         if (dateText) dateText.innerText = '';
     }
 
-    var prodCopy = []; for (var m = 0; m < data.length; m++) { prodCopy.push(data[m]); }
+    var prodCopy = []; 
+    for (var m = 0; m < data.length; m++) { 
+        if (data[m]) prodCopy.push(data[m]); 
+    }
     
-    var displayData = prodCopy.reverse().filter(function(row) {
+    // ZETTBOT PRO FIX: Algoritma Sorting Eksplisit (Garansi Transaksi Terbaru Selalu di Atas)
+    prodCopy.sort(function(a, b) {
+        var idA = parseInt(String(a['ID'] || '').replace(/[^0-9]/g, '')) || 0;
+        var idB = parseInt(String(b['ID'] || '').replace(/[^0-9]/g, '')) || 0;
+        return idB - idA; // Pengurutan Descending
+    });
+
+    var displayData = prodCopy.filter(function(row) {
         var cust = resolvePelanggan(row['ID Pelanggan']); var combined = row['No Nota'] + ' ' + cust.nama + ' ' + cust.hp + ' ' + resolveLayananNameForProduksi(row['Layanan']); combined = combined.toLowerCase();
         
         var matchSearch = !searchVal || combined.includes(searchVal); 
@@ -183,7 +193,7 @@ function initCustomerAutocomplete() {
                     newOpt[!isNama ? 'nama' : 'hp'] = upInput;
                     return newOpt;
                 }, 
-                createOnBlur: true, // ZETTBOT FIX: Mengubah dari false ke true agar input teks bebas tidak hilang saat dienter/tab
+                createOnBlur: false, 
                 persist: false, 
                 selectOnTab: true, 
                 openOnFocus: true,
@@ -399,7 +409,6 @@ function openStaffModal() {
     }
 
     if(form) {
-        // FIX: Reset manual per-elemen agar tidak trigger InvalidStateError pada input[type=file]
         var allInputs = form.querySelectorAll('input, select, textarea');
         allInputs.forEach(function(el) {
             try {
@@ -741,7 +750,6 @@ function execSaveStaff(recordObj, fileData, btn) {
     if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
     if(String(recordObj['No Telpon']).startsWith("'")) { recordObj['No Telpon'] = recordObj['No Telpon'].substring(1); }
     
-    // DEBUG: Tampilkan info detail di console
     console.log("=== DEBUG execSaveStaff ===");
     console.log("GAS_URL:", typeof GAS_URL !== 'undefined' ? GAS_URL.substring(0, 60) + '...' : 'TIDAK DITEMUKAN');
     console.log("_isZettBridgePolyfill:", window._isZettBridgePolyfill);
@@ -752,7 +760,7 @@ function execSaveStaff(recordObj, fileData, btn) {
 
     // 1. ZETTBOT: Pemutusan Total (Decoupling) UI ke Firebase secara Langsung
     var existsIdx = appData.produksi.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
-    if (existsIdx >= 0) { appData.produksi[existsIdx] = recordObj; } else { appData.produksi.unshift(recordObj); }
+    if (existsIdx >= 0) { appData.produksi[existsIdx] = recordObj; } else { appData.produksi.push(recordObj); }
 
     // Pemotongan Kuota Optimistic
     if (recordObj['Pembayaran'] === 'Potong Kuota' && recordObj['Kg Terpakai']) {
@@ -780,7 +788,6 @@ function execSaveStaff(recordObj, fileData, btn) {
     showSuccessModal();
 
     // 3. FIX: Deteksi mode GAS native vs Vercel/ZettBridge
-    // GAS native HANYA jika ada google.script.run.withSuccessHandler DAN bukan ZettBridge polyfill
     var isGasNative = (typeof google !== 'undefined' && 
                        google.script && 
                        typeof google.script.run === 'object' &&
@@ -789,7 +796,7 @@ function execSaveStaff(recordObj, fileData, btn) {
                        !window._isZettBridgePolyfill);
 
     if (isGasNative) {
-        // Mode GAS native murni (deploy langsung dari GAS, bukan Vercel)
+        // Mode GAS native murni
         google.script.run
             .withSuccessHandler(function(res) {
                 console.log("ZettBOT: Transaksi sukses di-backup (GAS native).");
@@ -799,14 +806,12 @@ function execSaveStaff(recordObj, fileData, btn) {
             })
             .saveTransaksiStaff(recordObj, fileData);
     } else {
-        // Mode Vercel/Eksternal: gunakan fetch langsung ke GAS_URL
+        // Mode Vercel/Eksternal: gunakan fetch POST murni TANPA Headers (Simple Request bypass CORS)
         console.log("ZettBOT: Mengirim ke Sheets via ZettBridge fetch...");
         var payload = (fileData) ? { recordObj: recordObj, fileData: fileData } : { recordObj: recordObj };
-        console.log("DEBUG fetch payload keys:", Object.keys(payload));
-        console.log("DEBUG GAS_URL fetch ke:", typeof GAS_URL !== 'undefined' ? GAS_URL.substring(0,80) : 'UNDEFINED');
+        
         fetch(GAS_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload })
         })
         .then(function(res) { 
@@ -827,7 +832,6 @@ function execSaveStaff(recordObj, fileData, btn) {
             }
         })
         .catch(function(e) {
-            console.error("DEBUG fetch GAGAL total:", e.message, e);
             console.error("ZettBOT: Gagal backup ke Sheets via ZettBridge:", e);
         });
     }
