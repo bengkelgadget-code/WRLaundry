@@ -1,7 +1,8 @@
 // ZETTBOT HYBRID ENGINE: Auto-Switch Backend & Firebase RTDB
 // ====================================================================
-// PERHATIAN: Masukkan URL Web App (hasil deploy GAS terbaru) Anda di sini!
-const GAS_URL = "/api/proxy"; // Proxy Vercel - bypass CORS GAS
+// PERHATIAN: Kita KEMBALI MENGGUNAKAN DIRECT GAS URL!
+// Ini akan men-bypass Vercel Proxy untuk menghindari Timeout 10 detik.
+const GAS_URL = "https://script.google.com/macros/s/AKfycbw4LsV2mB_x517QfNxQtA4AQmdYzyaUNPp0KCcC1F-_o-0wJtUaKYvdlqKmZcWBKq4Cyw/exec"; 
 
 const firebaseConfig = {
     apiKey: "AIzaSyBbTTYAroluZ3UYMPgnoxLYn1aqPFq9Wik",
@@ -117,7 +118,7 @@ if (typeof google === 'undefined') {
                             if(this._onSuccess) this._onSuccess(data);
                         })
                         .catch(err => { 
-                            console.error("GET Gagal, mencoba POST fallback...", err);
+                            console.log("ℹ️ GET Gagal (CORS/Timeout), mencoba POST fallback...", err.message);
                             fetch(GAS_URL, { 
                                 method: 'POST', 
                                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -345,7 +346,6 @@ if (typeof google === 'undefined') {
 
                     _backgroundSyncGasToFirebase: function() {
                         // ZETTBOT FIX: Beri jeda 5 detik (Cold Start Mitigation)
-                        // Agar Vercel Server tidak timeout saat awal memuat, dan UI tidak terblokir
                         setTimeout(() => {
                             var syncPostFallback = () => {
                                 fetch(GAS_URL, { 
@@ -376,7 +376,7 @@ if (typeof google === 'undefined') {
                                         console.log("✅ Background sync (POST fallback) sukses!");
                                     }
                                 })
-                                .catch(e => console.log("ℹ️ ZettBridge Info: Sinkronisasi latar belakang terhenti sementara karena Vercel Proxy Timeout. (Aman: Data menggunakan Firebase)"));
+                                .catch(e => console.log("ℹ️ ZettBridge Info: Fetch latar belakang tertunda. Data aman di Firebase."));
                             };
 
                             fetch(GAS_URL + "?action=getInitialData&t=" + new Date().getTime(), { method: 'GET' })
@@ -403,10 +403,11 @@ if (typeof google === 'undefined') {
                                     appData.users = data.users || appData.users;
                                     appData.produksi = data.produksi; // sudah di-merge dengan data lokal
                                     database.ref('appData').set(sanitizeFbKeys(appData)); 
+                                    console.log("✅ Background sync GET sukses!");
                                 } 
                             })
                             .catch(e => {
-                                console.log("ℹ️ ZettBridge Info: Vercel Proxy GET Timeout/Sibuk. Mencoba rute POST...");
+                                console.log("ℹ️ ZettBridge Info: Rute GET ditolak (CORS), mencoba rute POST murni...");
                                 syncPostFallback();
                             });
                         }, 5000); // 5 Detik Jeda
