@@ -942,7 +942,14 @@ document.addEventListener('input', e => {
 var startY = 0;
 document.addEventListener('touchstart', e => { if(window.scrollY < 10) startY = e.touches[0].pageY; });
 document.addEventListener('touchend', e => {
+    // Cek apakah modal/form kasir sedang terbuka
+    var modalStaff = document.getElementById('modal-staff-tx');
+    var isModalOpen = modalStaff && !modalStaff.classList.contains('hidden');
+
     if(window.scrollY < 10 && e.changedTouches[0].pageY - startY > 150) {
+        // Jika form kasir terbuka, hentikan fungsi refresh
+        if (isModalOpen) return; 
+        
         showToast("Menyegarkan data...");
         fetchInitialData();
     }
