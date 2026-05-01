@@ -62,9 +62,19 @@ function renderStaffTable(keepPage) {
         if (dateText) dateText.innerText = '';
     }
 
-    var prodCopy = []; for (var m = 0; m < data.length; m++) { prodCopy.push(data[m]); }
+    var prodCopy = []; 
+    for (var m = 0; m < data.length; m++) { 
+        if (data[m]) prodCopy.push(data[m]); 
+    }
     
-    var displayData = prodCopy.reverse().filter(function(row) {
+    // ZETTBOT PRO FIX: Algoritma Sorting Eksplisit (Garansi Transaksi Terbaru Selalu di Atas)
+    prodCopy.sort(function(a, b) {
+        var idA = parseInt(String(a['ID'] || '').replace(/[^0-9]/g, '')) || 0;
+        var idB = parseInt(String(b['ID'] || '').replace(/[^0-9]/g, '')) || 0;
+        return idB - idA; // Pengurutan Descending
+    });
+
+    var displayData = prodCopy.filter(function(row) {
         var cust = resolvePelanggan(row['ID Pelanggan']); var combined = row['No Nota'] + ' ' + cust.nama + ' ' + cust.hp + ' ' + resolveLayananNameForProduksi(row['Layanan']); combined = combined.toLowerCase();
         
         var matchSearch = !searchVal || combined.includes(searchVal); 
@@ -399,7 +409,6 @@ function openStaffModal() {
     }
 
     if(form) {
-        // FIX: Reset manual per-elemen agar tidak trigger InvalidStateError pada input[type=file]
         var allInputs = form.querySelectorAll('input, select, textarea');
         allInputs.forEach(function(el) {
             try {
