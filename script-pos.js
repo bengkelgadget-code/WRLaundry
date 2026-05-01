@@ -42,19 +42,30 @@ function renderStaffTable(keepPage) {
 
     var searchInput = document.getElementById('staff-search'); var searchVal = searchInput ? (searchInput.value || '').toLowerCase() : '';
     var filterInput = document.getElementById('staff-filter-status'); var statusFilter = filterInput ? filterInput.value : '';
-    var dateToggle = document.getElementById('staff-filter-date-toggle'); var isDateFilterActive = dateToggle ? dateToggle.checked : false;
-    var dateFilterInput = document.getElementById('staff-filter-date'); var dateFilterVal = dateFilterInput ? dateFilterInput.value : '';
+    
+    var dateToggle = document.getElementById('staff-filter-date-toggle');
+    var isDateFilterActive = dateToggle ? dateToggle.checked : false;
+    
+    var dateFilterInput = document.getElementById('staff-filter-date');
+    var dateFilterVal = dateFilterInput ? dateFilterInput.value : '';
+    var formattedDateFilter = '';
+    var parts = [];
     var dateText = document.getElementById('staff-filter-date-text');
     
     if (dateFilterVal) {
-        var parts = dateFilterVal.split('-');
-        if (parts.length === 3) { if (dateText) dateText.innerText = parts[2]; }
+        parts = dateFilterVal.split('-');
+        if (parts.length === 3) {
+            formattedDateFilter = parts[2] + '/' + parts[1] + '/' + parts[0]; 
+            if (dateText) dateText.innerText = parts[2]; 
+        }
     } else {
         if (dateText) dateText.innerText = '';
     }
 
     var prodCopy = []; 
-    for (var m = 0; m < data.length; m++) { if (data[m]) prodCopy.push(data[m]); }
+    for (var m = 0; m < data.length; m++) { 
+        if (data[m]) prodCopy.push(data[m]); 
+    }
     
     prodCopy.sort(function(a, b) {
         var idA = parseInt(String(a['ID'] || '').replace(/[^0-9]/g, '')) || 0;
@@ -64,10 +75,11 @@ function renderStaffTable(keepPage) {
 
     var displayData = prodCopy.filter(function(row) {
         var cust = resolvePelanggan(row['ID Pelanggan']); var combined = row['No Nota'] + ' ' + cust.nama + ' ' + cust.hp + ' ' + resolveLayananNameForProduksi(row['Layanan']); combined = combined.toLowerCase();
+        
         var matchSearch = !searchVal || combined.includes(searchVal); 
         var matchStatus = !statusFilter || row['Status'] === statusFilter; 
-        var matchDate = true;
         
+        var matchDate = true;
         if (isDateFilterActive && dateFilterVal) {
             var rowDateStr = row['Waktu Masuk'] ? String(row['Waktu Masuk']) : '';
             var dParts = dateFilterVal.split('-');
@@ -77,6 +89,7 @@ function renderStaffTable(keepPage) {
                 matchDate = rowDateStr.includes(formatSlash) || rowDateStr.includes(formatDash) || rowDateStr.includes(dateFilterVal);
             }
         }
+
         return matchSearch && matchStatus && matchDate;
     });
 
@@ -126,7 +139,8 @@ function renderStaffTable(keepPage) {
         var pBg = ''; if (pmbStatusVal === 'Lunas') pBg = 'bg-emerald-50 text-emerald-600 border-emerald-200'; else if (pmbStatusVal === 'DP') pBg = 'bg-amber-50 text-amber-600 border-amber-200'; else if (pmbStatusVal === 'Potong Kuota') pBg = 'bg-indigo-50 text-indigo-600 border-indigo-200'; else pBg = 'bg-red-50 text-red-500 border-red-200';
 
         var delay = Math.min(index * 0.05, 0.5); 
-        var htmlRow = '<div class="bg-white px-4 py-3 border border-slate-100 rounded-2xl active:bg-slate-50 transition-colors cursor-pointer relative slide-up-fade shadow-sm" style="animation-delay: ' + delay + 's;" onclick="openStaffTxDetail(\'' + row['ID'] + '\')">';
+        // MEMANGGIL openTxDetail SEPERTI SEMULA (Modal Struk)
+        var htmlRow = '<div class="bg-white px-4 py-3 border border-slate-100 rounded-2xl active:bg-slate-50 transition-colors cursor-pointer relative slide-up-fade shadow-sm" style="animation-delay: ' + delay + 's;" onclick="openTxDetail(\'' + row['ID'] + '\')">';
         htmlRow += '<div class="flex justify-between items-center mb-1"><h3 class="text-[13px] font-black text-slate-800 uppercase tracking-tight truncate">' + cust.nama + '</h3><span class="text-[10px] font-bold text-slate-500 font-mono tracking-widest">' + (row['No Nota'] || row['ID']) + '</span></div>';
         htmlRow += '<div class="flex justify-between items-start mb-1.5"><p class="text-[11px] font-semibold text-slate-500 leading-snug w-2/3 pr-2 truncate">' + resolveLayananNameForProduksi(row['Layanan']).replace(/\+/g, ', ') + '</p><p class="text-[12px] font-black text-slate-700 whitespace-nowrap w-1/3 text-right">Rp ' + Number(row['Total Harga'] || 0).toLocaleString('id-ID') + '</p></div>';
         htmlRow += '<div class="flex justify-between items-center"><p class="text-[10px] font-medium text-slate-400"><i class="ph-fill ph-calendar-check"></i> Est: ' + estSelesaiTeks + '</p><div class="flex gap-1.5 items-center"><span class="px-2 py-0.5 rounded-md border text-[9px] font-bold uppercase ' + pBg + '">' + pmbStatusVal + '</span><span class="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ' + sBg + '">' + row['Status'] + '</span></div></div></div>';
@@ -145,7 +159,6 @@ function renderStaffTable(keepPage) {
     }
 }
 
-// ZETTBOT PRO FIX: Smart TomSelect - Lock Value on Tab/Blur
 function initCustomerAutocomplete() {
     if (typeof TomSelect === 'undefined') return;
     
@@ -173,15 +186,8 @@ function initCustomerAutocomplete() {
                 searchField: ['nama', 'hp'], 
                 options: JSON.parse(JSON.stringify(custOptions)), 
                 maxItems: 1, 
-                
-                // Ciptakan opsi secara on the fly
-                create: function(input) {
-                    var upInput = input.toUpperCase();
-                    if (isNama) { return { id: 'AUTO', nama: upInput, hp: '' }; } 
-                    else { return { id: 'AUTO', nama: '', hp: upInput }; }
-                }, 
-                // KUNCI PENTING: Saat kasir klik Tab/Enter, paksa simpan!
-                createOnBlur: true, 
+                create: false, // MATIKAN AUTO CREATE BAWAAN TOMSELECT
+                createOnBlur: false, 
                 persist: false, 
                 selectOnTab: true,
                 openOnFocus: true,
@@ -202,6 +208,47 @@ function initCustomerAutocomplete() {
                     };
                 },
 
+                // LOGIKA MANUAL: CEGAT TAB/ENTER UNTUK MENYIMPAN INPUTAN BARU (Anti Copy-Paste Bug)
+                onKeyDown: function(e) {
+                    if(e.key === 'Tab' || e.key === 'Enter' || e.keyCode === 13) {
+                        var currentInput = this.control_input.value.trim().toUpperCase();
+                        
+                        if(this.isOpen) {
+                            e.preventDefault();
+                            var targetOpt = this.activeOption;
+                            if (!targetOpt || !targetOpt.classList.contains('active')) { 
+                                var visibleOpts = Array.from(this.dropdown_content.querySelectorAll('.option:not(.create)')).filter(function(el) { return el.style.display !== 'none'; });
+                                if (visibleOpts.length > 0) { targetOpt = visibleOpts[0]; }
+                            }
+                            
+                            if (targetOpt) {
+                                var val = targetOpt.getAttribute('data-value');
+                                if (val) { this.setValue(val); }
+                            } else if (currentInput) {
+                                // JIKA TIDAK ADA DI DATABASE, PAKSA SIMPAN SEBAGAI OPSI BARU (AUTO)
+                                var newOpt = { id: 'AUTO' };
+                                if(isNama) { newOpt.nama = currentInput; newOpt.hp = ''; } else { newOpt.nama = ''; newOpt.hp = currentInput; }
+                                this.addOption(newOpt);
+                                this.setValue(currentInput);
+                            }
+                        } else if (currentInput && this.items.length === 0) {
+                            var newOpt = { id: 'AUTO' };
+                            if(isNama) { newOpt.nama = currentInput; newOpt.hp = ''; } else { newOpt.nama = ''; newOpt.hp = currentInput; }
+                            this.addOption(newOpt);
+                            this.setValue(currentInput);
+                        }
+                        this.close(); this.blur(); 
+                    }
+                },
+                onBlur: function() {
+                    var currentInput = this.control_input.value.trim().toUpperCase();
+                    if (currentInput && this.items.length === 0) {
+                        var newOpt = { id: 'AUTO' };
+                        if(isNama) { newOpt.nama = currentInput; newOpt.hp = ''; } else { newOpt.nama = ''; newOpt.hp = currentInput; }
+                        this.addOption(newOpt);
+                        this.setValue(currentInput);
+                    }
+                },
                 render: { 
                     option: function(item, escape) { 
                         var isNew = (item.id === undefined || item.id === 'AUTO');
@@ -214,22 +261,19 @@ function initCustomerAutocomplete() {
                             var icon = isNama ? 'phone' : 'user';
                             return '<div class="py-2 px-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50"><span class="font-bold block text-slate-800 text-[13px] mb-0.5 pointer-events-none">' + mainText + '</span><span class="text-[11px] font-mono text-slate-500 pointer-events-none"><i class="ph-fill ph-' + icon + ' text-teal-500 mr-1 pointer-events-none"></i> ' + subText + '</span></div>'; 
                         } 
-                    },
-                    option_create: function(data, escape) { 
-                        return '<div class="create py-2 px-3 text-sm border-b border-slate-50">Tambah baru: <strong class="text-teal-600">' + escape(data.input) + '</strong></div>'; 
                     }
                 },
-                
                 onChange: function(value) {
-                    if (isFormPopulating) return; // Jangan trigger jika mode Populator aktif
-                    
                     try {
                         validateStaffForm(); 
                         var targetId = isNama ? 'staff-input-hp' : 'staff-input-nama';
                         var companionTs = tsInstances[targetId];
 
                         if(!value) { 
-                            if(companionTs) { companionTs.enable(); companionTs.clear(true); }
+                            if(companionTs) {
+                                companionTs.enable();
+                                companionTs.clear(true);
+                            }
                             document.getElementById('staff-member-info').classList.add('hidden'); 
                             document.getElementById('staff-member-info').classList.remove('flex'); 
                             togglePotongKuotaOption(false, false);
@@ -239,13 +283,12 @@ function initCustomerAutocomplete() {
                         var match = this.options[value];
                         
                         if (match) {
-                            // Cek jika Kustomer Lama
                             if (match.id !== 'AUTO') {
                                 if (companionTs) { 
                                     companionTs.addOption(match); 
                                     var valToSet = isNama ? match.hp : match.nama; 
                                     companionTs.setValue(valToSet, true); 
-                                    companionTs.disable(); // Kunci partner
+                                    companionTs.disable();
                                 }
                                 
                                 var realCust = (appData.pelanggan || []).find(function(p) { return String(p['ID']) === String(match.id); }); 
@@ -254,6 +297,7 @@ function initCustomerAutocomplete() {
                                 
                                 if (realCust && realCust['Status'] === 'Member') {
                                     togglePotongKuotaOption(true, false);
+                                    
                                     var sisaKuota = parseFloat(realCust['Sisa Kuota (Kg)'] || 0); var paketName = '-';
                                     if (realCust['Paket Member']) {
                                         var paketObj = (appData.member || []).find(function(m) { return m['ID'] === realCust['Paket Member']; });
@@ -268,16 +312,15 @@ function initCustomerAutocomplete() {
                                         }
                                     }
                                     infoEl.innerHTML = '<i class="ph-fill ph-diamond text-lg"></i> <span>Paket <b>' + paketName + '</b> | Sisa Kuota <b>' + sisaKuota + ' Kg</b></span>'; infoEl.classList.remove('hidden'); infoEl.classList.add('flex');
-                                    if (pmbInput && !window.isEditTxMode) { pmbInput.value = 'Potong Kuota'; handlePembayaranChange(); }
+                                    if (pmbInput) { pmbInput.value = 'Potong Kuota'; handlePembayaranChange(); }
                                 } else {
                                     togglePotongKuotaOption(false, false);
                                     infoEl.classList.add('hidden'); infoEl.classList.remove('flex');
                                 }
                             } else {
-                                // PELANGGAN BARU (AUTO): Biarkan input sebelah (No HP / Nama) tetap terbuka & bersih
                                 if (companionTs) {
                                     companionTs.enable();
-                                    // Pastikan kita tidak menghapus input kustomer jika dia pindah dari Nama ke HP
+                                    // BIARKAN KOSONG, JANGAN DI CLEAR JIKA USER PINDAH-PINDAH
                                 }
                                 togglePotongKuotaOption(false, false);
                                 var infoEl = document.getElementById('staff-member-info');
@@ -289,6 +332,14 @@ function initCustomerAutocomplete() {
                             
                             calcStaffTotalAll(); 
                             this.close();
+                            
+                            setTimeout(function() { 
+                                if (isNama && match.id === 'AUTO') {
+                                    if(companionTs) companionTs.focus(); 
+                                } else {
+                                    if(tsInstances['staff-srv-select-1']) { tsInstances['staff-srv-select-1'].focus(); } 
+                                }
+                            }, 150);
 
                         } else {
                             if (companionTs) { companionTs.enable(); }
@@ -336,10 +387,6 @@ function attachPaymentScroll(inputId) {
 }
 
 function openStaffModal() {
-    window.isEditTxMode = false;
-    window.currentEditTxData = null;
-    isFormPopulating = true;
-
     var modal = document.getElementById('modal-staff-tx'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
     
     var titleEls = modal.querySelectorAll('h2, h3');
@@ -358,14 +405,16 @@ function openStaffModal() {
         form.classList.remove('pb-12');
     }
 
-    if(form) form.reset(); 
+    if(form) {
+        var allInputs = form.querySelectorAll('input:not([type="hidden"]), textarea');
+        allInputs.forEach(el => {
+            if(el.type !== 'file' && el.type !== 'checkbox' && el.type !== 'radio') el.value = '';
+        });
+    }
     
     document.getElementById('staff-foto-label').innerHTML = '<i class="ph-bold ph-camera text-3xl"></i>'; 
     document.getElementById('staff-total-biaya-label').innerText = 'Total Biaya'; 
     document.getElementById('staff-total-biaya').innerText = 'Rp 0';
-    
-    var diskonInput = document.getElementById('staff-input-diskon'); if (diskonInput) diskonInput.value = '';
-    var dpInput = document.getElementById('staff-input-dp'); if (dpInput) dpInput.value = '';
     
     var pmbInput = document.getElementById('staff-input-pembayaran'); 
     if (pmbInput) {
@@ -400,208 +449,82 @@ function openStaffModal() {
     document.getElementById('staff-services-container').innerHTML = ''; staffServicesCount = 0; staffServicesData = {};
     addStaffServiceRow(false); 
     validateStaffForm(); 
-    
-    isFormPopulating = false; 
 
     setTimeout(function() { if(tsInstances['staff-input-nama']) { tsInstances['staff-input-nama'].focus(); } }, 300);
 }
 
-// ZETTBOT PRO FIX: Synchronous Explicit Population without Delay and Resets
+// KEMBALIKAN FUNGSI openTxDetail SEPERTI SEMULA (Modal PREVIEW STRUK RINGKAS)
 function openTxDetail(id) {
-    var px = appData.produksi.find(function(x) { return x && String(x['ID']) === String(id); });
-    if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
-
-    var isLocked = false; 
-    var isPaymentLocked = false;
-    if (currentUser && currentUser.Role !== 'ADMIN') { 
-        if (px['Status'] === 'Diambil') isLocked = true; 
-        else if (px['Pembayaran'] === 'Lunas') isPaymentLocked = true; 
-    }
-
-    if (isLocked) {
-        showToast("Transaksi telah Diambil dan dikunci.", "error");
-        return;
-    }
-
-    window.isEditTxMode = true;
-    window.currentEditTxData = px;
-    isFormPopulating = true; // KUNCI MUTLAK
-
-    var modal = document.getElementById('modal-staff-tx'); 
-    if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
-
-    var titleEls = modal.querySelectorAll('h2, h3');
-    if(titleEls.length > 0) titleEls[0].innerText = "Edit Transaksi: " + (px['No Nota'] || px['ID']);
-
-    var formStaff = document.getElementById('form-staff-tx');
-    if(formStaff && !document.getElementById('staff-input-status')) {
-        var statusDiv = document.createElement('div');
-        statusDiv.id = 'staff-status-container';
-        statusDiv.className = 'mb-4 mt-4';
-        statusDiv.innerHTML = '<label class="block text-[11px] font-black text-slate-400 mb-1.5 uppercase">Status Transaksi</label><select id="staff-input-status" class="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none text-sm font-bold text-slate-700"><option value="Proses">Proses</option><option value="Selesai">Selesai</option><option value="Diambil">Diambil</option></select>';
-        var footer = document.getElementById('staff-footer-action');
-        if(footer) formStaff.insertBefore(statusDiv, footer);
+    var px = appData.produksi.find(function(x) { return x && String(x['ID']) === String(id); }); if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
+    currentDetailId = id; var cust = resolvePelanggan(px['ID Pelanggan']); currentSavedTx = {...px, 'Nama Pelanggan': cust.nama, 'No Telpon': cust.hp};
+    document.getElementById('tx-detail-preview').innerHTML = generateReceiptHTML(currentSavedTx);
+    
+    var statusEl = document.getElementById('tx-detail-status'); 
+    if (statusEl) { 
+        statusEl.value = px['Status'] || 'Proses'; 
+        statusEl.disabled = false; 
     }
     
-    var statusContainer = document.getElementById('staff-status-container');
-    if(statusContainer) statusContainer.classList.remove('hidden');
-
-    try {
-        var statusSelect = document.getElementById('staff-input-status');
-        if(statusSelect) statusSelect.value = px['Status'] || 'Proses';
-
-        // Bersihkan diskon dan DP secara eksplisit (Tidak pakai reset agar input lain aman)
-        var diskonEl = document.getElementById('staff-input-diskon'); if(diskonEl) diskonEl.value = '';
-        var dpEl = document.getElementById('staff-input-dp'); if(dpEl) dpEl.value = '';
-
-        // Kunci Nota
-        var notaInput = document.getElementById('staff-input-nota');
-        if(notaInput) {
-            notaInput.value = px['No Nota'] || px['ID'] || '';
-            notaInput.disabled = true;
-            notaInput.classList.add('bg-slate-100', 'cursor-not-allowed', 'opacity-70');
+    var pmbEl = document.getElementById('tx-detail-pembayaran');
+    var pmbStatus = px['Pembayaran'] || 'Belum Lunas'; 
+    var totalHarga = Number(px['Total Harga'] || 0); 
+    
+    if (pmbEl) {
+        var kgTerpakai = parseFloat(px['Kg Terpakai']) || 0;
+        var subtotalTx = 0; var diskonTx = 0;
+        try { var parsed = JSON.parse(px['Detail Layanan JSON'] || '{}'); subtotalTx = parsed.subtotal || 0; diskonTx = parsed.diskon || 0; } catch(e){}
+        if (totalHarga === 0 && subtotalTx > 0 && diskonTx === 0) { pmbStatus = 'Potong Kuota'; px['Pembayaran'] = 'Potong Kuota'; }
+        else if (totalHarga === 0 && (pmbStatus === 'Potong Kuota' || kgTerpakai > 0)) { pmbStatus = 'Potong Kuota'; px['Pembayaran'] = 'Potong Kuota'; }
+        
+        var custDataForEdit = (appData.pelanggan || []).find(function(p) { return p && p['ID'] === px['ID Pelanggan']; });
+        togglePotongKuotaOption(custDataForEdit && custDataForEdit['Status'] === 'Member', true);
+        
+        pmbEl.value = pmbStatus;
+        var pmbContainer = document.getElementById('tx-detail-pembayaran-container');
+        
+        if (pmbStatus === 'Potong Kuota' && totalHarga === 0) { 
+            pmbContainer.classList.add('hidden'); 
+        } else { 
+            pmbContainer.classList.remove('hidden'); 
+            pmbEl.disabled = false; 
+            pmbEl.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-slate-200'); 
         }
-
-        var photoLabel = document.getElementById('staff-foto-label');
-        if (photoLabel) {
-            if (px['Foto'] && String(px['Foto']).startsWith('http')) {
-                photoLabel.innerHTML = '<img src="' + px['Foto'] + '" class="absolute inset-0 w-full h-full object-cover z-0 rounded-xl"><div class="absolute inset-0 bg-slate-900/50 flex items-center justify-center z-0 rounded-xl"><i class="ph-bold ph-pencil text-white drop-shadow-md text-2xl"></i></div>';
-            } else {
-                photoLabel.innerHTML = '<i class="ph-bold ph-camera text-3xl"></i>'; 
-            }
-        }
-
-        // Panggil data pelanggan
-        var txNama = px['Nama Pelanggan'] || '';
-        var txHp = px['No Telpon'] || '';
-        if (txHp.startsWith("'")) txHp = txHp.substring(1);
-        var txIdPelanggan = px['ID Pelanggan'] || 'AUTO';
-
-        // Suntikkan ke TomSelect tanpa ragu
-        if(tsInstances['staff-input-nama']) {
-            tsInstances['staff-input-nama'].clear(true);
-            tsInstances['staff-input-nama'].addOption({id: txIdPelanggan, nama: txNama, hp: txHp});
-            tsInstances['staff-input-nama'].setValue(txNama, true);
-        }
-        if(tsInstances['staff-input-hp']) {
-            tsInstances['staff-input-hp'].clear(true);
-            tsInstances['staff-input-hp'].addOption({id: txIdPelanggan, nama: txNama, hp: txHp});
-            tsInstances['staff-input-hp'].setValue(txHp, true);
-        }
-
-        var custDataForEdit = (appData.pelanggan || []).find(p => p && String(p['ID']) === String(px['ID Pelanggan']));
-        togglePotongKuotaOption(custDataForEdit && custDataForEdit['Status'] === 'Member', false);
-
-        // Bedah & Suntik Layanan Secara Instan
-        document.getElementById('staff-services-container').innerHTML = '';
-        staffServicesCount = 0; staffServicesData = {};
-
-        var items = [];
-        try {
-            var parsed = JSON.parse(px['Detail Layanan JSON'] || '{}');
-            items = Array.isArray(parsed) ? parsed : (parsed.items || []);
-        } catch(e){}
-
-        if(items && items.length > 0) {
-            items.forEach(function(item) {
-                addStaffServiceRow(false); 
-                var rowId = staffServicesCount;
-                var compoundId = '';
-
-                var matchK = (appData.kiloan || []).find(k => k['Nama Layanan'] === item.nama);
-                if(matchK) compoundId = 'K-' + matchK['ID'];
-                else {
-                    var matchS = (appData.satuan || []).find(s => s['Nama Layanan'] === item.nama);
-                    if(matchS) compoundId = 'S-' + matchS['ID'];
-                }
-
-                if(compoundId && tsInstances['staff-srv-select-' + rowId]) {
-                    tsInstances['staff-srv-select-' + rowId].setValue(compoundId, true);
-                    handleStaffServiceSelect(rowId, compoundId); 
-                }
-
-                var qtyEl = document.getElementById('staff-srv-qty-' + rowId);
-                if(qtyEl) {
-                    qtyEl.value = item.qty;
-                    calcStaffServiceRow(rowId);
-                }
-            });
-        } else {
-            addStaffServiceRow(false);
-        }
-
-        // Hitung Ulang Pembayaran
-        var parsedJson = {}; try { parsedJson = JSON.parse(px['Detail Layanan JSON'] || '{}'); } catch(e){}
-        if(diskonEl) diskonEl.value = parsedJson.diskon ? new Intl.NumberFormat('id-ID').format(parsedJson.diskon) : '';
-        if(dpEl) dpEl.value = px['DP'] ? new Intl.NumberFormat('id-ID').format(px['DP']) : '';
-
-        var pmbEl = document.getElementById('staff-input-pembayaran');
-        if(pmbEl) {
-            var pmbStatus = px['Pembayaran'] || 'Belum Lunas';
-            var totalHarga = Number(px['Total Harga'] || 0);
-            var kgTerpakai = parseFloat(px['Kg Terpakai']) || 0;
-            var subtotalTx = parsedJson.subtotal || 0;
-            var diskonTx = parsedJson.diskon || 0;
-
-            if (totalHarga === 0 && subtotalTx > 0 && diskonTx === 0) pmbStatus = 'Potong Kuota';
-            else if (totalHarga === 0 && (pmbStatus === 'Potong Kuota' || kgTerpakai > 0)) pmbStatus = 'Potong Kuota';
-
-            pmbEl.value = pmbStatus;
-
-            if (isPaymentLocked) {
-                pmbEl.disabled = true;
-                pmbEl.classList.add('opacity-50', 'cursor-not-allowed', 'bg-slate-200');
-            } else {
-                pmbEl.disabled = false;
-                pmbEl.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-slate-200');
-            }
-            handlePembayaranChange();
-        }
-
-        calcStaffTotalAll();
-        validateStaffForm();
-
-    } catch (err) {
-        console.error("ZettBOT Populate Error: ", err);
-        showToast("Gagal memuat form: " + err.message, "error");
-    } finally {
-        isFormPopulating = false; // BUKA KUNCI SETELAH SEMUA SELESAI
     }
+    
+    var isLocked = false; 
+    var isPaymentLocked = false;
+    
+    if (currentUser && currentUser.Role !== 'ADMIN') { 
+        if (px['Status'] === 'Diambil') { 
+            isLocked = true; 
+        } else if (px['Pembayaran'] === 'Lunas') {
+            isPaymentLocked = true; 
+        }
+    }
+    
+    var lockMsg = document.getElementById('tx-lock-msg'); 
+    var editCtrls = document.getElementById('tx-edit-controls');
+    
+    if (isLocked) { 
+        if(lockMsg) { lockMsg.innerHTML = '<i class="ph-fill ph-lock-key mr-2"></i> Transaksi telah Diambil dan dikunci.'; lockMsg.classList.remove('hidden'); }
+        if(editCtrls) editCtrls.classList.add('hidden'); 
+    } else { 
+        if(lockMsg) lockMsg.classList.add('hidden'); 
+        if(editCtrls) editCtrls.classList.remove('hidden'); 
+        
+        if (isPaymentLocked && pmbEl) {
+            pmbEl.disabled = true;
+            pmbEl.classList.add('opacity-50', 'cursor-not-allowed', 'bg-slate-200');
+        }
+    }
+    
+    var modal = document.getElementById('modal-tx-detail'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
 }
 
 function handlePembayaranChange() {
     var val = document.getElementById('staff-input-pembayaran').value; var dpContainer = document.getElementById('staff-dp-container');
     if(val === 'DP') { dpContainer.classList.remove('hidden'); setTimeout(function() { var dpInput = document.getElementById('staff-input-dp'); if (dpInput) { dpInput.focus(); } }, 150); } else { dpContainer.classList.add('hidden'); var dpInput = document.getElementById('staff-input-dp'); if (dpInput) dpInput.value = ''; }
-    if (!isFormPopulating) { calcStaffTotalAll(); }
-}
-
-function togglePotongKuotaOption(isMember, isEditModal) {
-    var selectId = isEditModal ? 'tx-detail-pembayaran' : 'staff-input-pembayaran';
-    var optId = isEditModal ? 'opt-tx-potong-kuota' : 'opt-potong-kuota';
-    
-    var selectEl = document.getElementById(selectId);
-    if (!selectEl) return;
-    
-    var existingOption = document.getElementById(optId);
-    
-    if (isMember) {
-        if (!existingOption) {
-            var opt = document.createElement('option');
-            opt.value = "Potong Kuota";
-            opt.id = optId;
-            opt.className = "font-bold text-indigo-600";
-            opt.innerHTML = "💎 Potong Kuota (Member)";
-            selectEl.appendChild(opt);
-        }
-    } else {
-        if (existingOption) {
-            if (selectEl.value === 'Potong Kuota') {
-                selectEl.value = 'Belum Lunas';
-                if (!isEditModal) handlePembayaranChange();
-            }
-            existingOption.remove();
-        }
-    }
+    calcStaffTotalAll();
 }
 
 function addStaffServiceRow(autoFocus) {
@@ -695,7 +618,7 @@ function calcStaffServiceRow(rowId) {
     var data = staffServicesData[rowId]; var qtyEl = document.getElementById('staff-srv-qty-' + rowId); var qty = parseFloat(qtyEl.value) || 0;
     if(data.type === 'Satuan') { qty = Math.ceil(qty); qtyEl.value = qty; } 
     data.qty = qty; data.subtotal = data.price * qty; document.getElementById('staff-srv-subtotal-' + rowId).innerText = 'Rp ' + new Intl.NumberFormat('id-ID').format(data.subtotal);
-    if (!isFormPopulating) { calcStaffTotalAll(); }
+    calcStaffTotalAll();
 }
 
 function calcStaffTotalAll() {
@@ -835,7 +758,27 @@ function submitStaffTransaction() {
 
         let idPelanggan = '';
         let cust = (appData.pelanggan || []).find(p => p && p['Nama Pelanggan'] === nama);
-        if (cust) idPelanggan = cust['ID'];
+        if (cust) {
+            idPelanggan = cust['ID'];
+        } else {
+            // ZETTBOT FIX: Auto Create Pelanggan Optimistic (Mencegah UNKNOWN)
+            let maxPlg = 0;
+            (appData.pelanggan || []).forEach(p => { 
+                if(p && p.ID && String(p.ID).startsWith('PLG-')) { 
+                    let num = parseInt(p.ID.split('-')[1]); 
+                    if(!isNaN(num) && num > maxPlg) maxPlg = num; 
+                } 
+            });
+            idPelanggan = 'PLG-' + String(maxPlg + 1).padStart(4, '0');
+            appData.pelanggan.push({
+                'ID': idPelanggan,
+                'Nama Pelanggan': nama,
+                'No Telpon': finalHp,
+                'Status': 'Umum',
+                'Paket Member': '',
+                'Sisa Kuota (Kg)': 0
+            });
+        }
         
         var recordObj = { 
             'ID': txId,
@@ -948,7 +891,45 @@ function execSaveStaff(recordObj, fileData, btn) {
 }
 
 function saveTxDetailStatus() {
-    showToast("Fitur dialihkan ke Form Edit Transaksi penuh.", "info");
+    if(!currentDetailId) return;
+    var newStatus = document.getElementById('tx-detail-status').value; 
+    var newPembayaran = document.getElementById('tx-detail-pembayaran').value; 
+    var btn = document.getElementById('btn-save-tx-detail'); 
+    var origText = ''; if (btn) { origText = btn.innerHTML; btn.innerHTML = '<i class="ph-bold ph-spinner animate-spin mr-2"></i> MENYIMPAN...'; btn.disabled = true; }
+    
+    var updateMemory = function() {
+        currentSavedTx['Status'] = newStatus; currentSavedTx['Pembayaran'] = newPembayaran; if (newPembayaran === 'Lunas') { currentSavedTx['Sisa Bayar'] = 0; }
+        var idx = appData.produksi.findIndex(x => x && String(x.ID) === String(currentDetailId));
+        if(idx >= 0) {
+            appData.produksi[idx]['Status'] = newStatus;
+            appData.produksi[idx]['Pembayaran'] = newPembayaran;
+            if (newPembayaran === 'Lunas') appData.produksi[idx]['Sisa Bayar'] = 0;
+        }
+
+        if (typeof database !== 'undefined' && database) {
+            database.ref('appData/produksi').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.produksi) : appData.produksi);
+        }
+
+        if (typeof renderStaffTable === 'function') renderStaffTable(true);
+        if (typeof renderTable === 'function') renderTable('Produksi', true);
+    };
+
+    if (typeof google === 'undefined' || !google.script) {
+         if (btn) { btn.innerHTML = origText; btn.disabled = false; }
+         updateMemory();
+         closeModal('modal-tx-detail'); document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx); showSuccessModal(); return;
+    }
+    
+    updateMemory();
+    if (btn) { btn.innerHTML = origText; btn.disabled = false; }
+    closeModal('modal-tx-detail'); 
+    document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx); 
+    showSuccessModal();
+
+    google.script.run
+        .withSuccessHandler(function(res) {})
+        .withFailureHandler(function(error) { })
+        .updateStatusProduksi(currentDetailId, newStatus, newPembayaran);
 }
 
 function viewProduksiDetail(id) {
@@ -1220,6 +1201,14 @@ function updatePrinterStatusUI() {
     }
 }
 
+function executeFallbackPrint() {
+    document.getElementById('print-area').innerHTML = generateReceiptHTML(currentSavedTx); 
+    window.print(); 
+    setTimeout(function() {
+        zettConfirm("Informasi Mode Cetak", "Jika di layar Anda malah muncul 'Simpan sebagai PDF', tekan tulisan tersebut lalu pilih 'Semua Printer' dan pilih nama Printer Thermal Anda.", "info", function(){});
+    }, 1000);
+}
+
 async function actionPrintReceipt() {
     if(!currentSavedTx) return;
 
@@ -1284,22 +1273,15 @@ async function actionPrintReceipt() {
             if (e.name === 'NotFoundError') {
                 showToast("Cetak dibatalkan pengguna.", "error");
                 return;
-            } else if (e.name === 'NotSupportedError') {
-                showToast("Perangkat ini memblokir cetak langsung. Beralih ke mode Sistem/RawBT.", "warning");
             } else {
                 showToast("Gagal Terhubung: " + e.message + ". Beralih ke mode Sistem/RawBT.", "error");
+                setTimeout(executeFallbackPrint, 1000);
+                return;
             }
         }
+    } else {
+        executeFallbackPrint();
     }
-
-    setTimeout(function() { 
-        document.getElementById('print-area').innerHTML = generateReceiptHTML(currentSavedTx); 
-        window.print(); 
-        
-        setTimeout(function() {
-            zettConfirm("Informasi Mode Cetak", "Jika di layar Anda malah muncul 'Simpan sebagai PDF', tekan tulisan tersebut lalu pilih 'Semua Printer' dan pilih nama Printer Thermal Anda. \n\n(Catatan: Jika nama printernya tidak ada, Anda wajib menginstal aplikasi 'RawBT' di PlayStore agar Android Anda mengenali printer kasir).", "info", function(){});
-        }, 1000);
-    }, 500); 
 }
 
 document.addEventListener('input', e => {
