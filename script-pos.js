@@ -857,6 +857,16 @@ function saveTxDetailStatus() {
     if(!currentDetailId) return;
     var newStatus = document.getElementById('tx-detail-status').value; 
     var newPembayaran = document.getElementById('tx-detail-pembayaran').value; 
+
+    // ZETTBOT FIX: Rule Staff - Transaksi Belum Lunas Tidak Bisa Diambil
+    if (currentUser && currentUser.Role !== 'ADMIN') {
+        if (newStatus === 'Diambil' && newPembayaran !== 'Lunas' && newPembayaran !== 'Potong Kuota') {
+            showToast("Akses Ditolak! Transaksi harus dilunasi sebelum diambil.", "error");
+            document.getElementById('tx-detail-status').value = currentSavedTx['Status'] || 'Proses';
+            return;
+        }
+    }
+
     var btn = document.getElementById('btn-save-tx-detail'); 
     var origText = ''; if (btn) { origText = btn.innerHTML; btn.innerHTML = '<i class="ph-bold ph-spinner animate-spin mr-2"></i> MENYIMPAN...'; btn.disabled = true; }
     
