@@ -1130,34 +1130,53 @@ function exportHistory(exportType) {
             var imgData = canvas.toDataURL('image/jpeg', 0.85);
             
             if (exportType === 'wa') {
-                var a = document.createElement('a');
-                a.href = imgData;
-                a.download = 'Laporan_' + custName.replace(/ /g, '_') + '.jpg';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                
+                var fileName = 'Laporan_' + custName.replace(/ /g, '_') + '.jpg';
                 var phone = custPhone || '';
                 phone = phone.replace(/\D/g, ''); 
                 if (phone.startsWith('0')) phone = '62' + phone.substring(1);
                 
-                var waMsg = "Halo *" + custName + "*,\nBerikut adalah lampiran laporan/rekap transaksi Anda. Mohon konfirmasi laporan yang telah kami unduhkan ya. Terima kasih! 🙏";
-                var waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(waMsg);
+                var waMsg = "Halo *" + custName + "*,\nBerikut adalah lampiran laporan/rekap transaksi Anda. Mohon konfirmasi laporan yang telah kami bagikan ya. Terima kasih! 🙏";
                 
-                // ZETTBOT FIX: Auto-copy ke clipboard agar mudah di-paste di WhatsApp Web
-                try {
-                    canvas.toBlob(function(blob) {
-                        if (navigator.clipboard && navigator.clipboard.write) {
-                            navigator.clipboard.write([
-                                new ClipboardItem({ 'image/png': blob })
-                            ]).then(function() {
-                                showToast("Gambar disalin! Tekan Paste (Ctrl+V) di WhatsApp.", "success");
-                            }).catch(function(e) { console.log(e); });
-                        }
-                    }, 'image/png');
-                } catch(e) {}
-                
-                setTimeout(function() { window.open(waUrl, '_blank'); }, 800);
+                canvas.toBlob(function(blobJpeg) {
+                    var file = new File([blobJpeg], fileName, { type: 'image/jpeg' });
+                    
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        // NATIVE SHARE API (UNTUK HP)
+                        navigator.share({
+                            title: 'Laporan Transaksi',
+                            text: waMsg,
+                            files: [file]
+                        }).then(function() {
+                            showToast("Laporan berhasil dibagikan!", "success");
+                        }).catch(function(err) {
+                            console.log('Share canceled/failed:', err);
+                        });
+                    } else {
+                        // FALLBACK AUTO-DOWNLOAD & COPY (UNTUK LAPTOP ATAU BROWSER LAMA)
+                        var a = document.createElement('a');
+                        a.href = imgData;
+                        a.download = fileName;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        
+                        var waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(waMsg);
+                        
+                        try {
+                            canvas.toBlob(function(blobPng) {
+                                if (navigator.clipboard && navigator.clipboard.write) {
+                                    navigator.clipboard.write([
+                                        new ClipboardItem({ 'image/png': blobPng })
+                                    ]).then(function() {
+                                        showToast("Gambar disalin! Tekan Paste (Ctrl+V) di WhatsApp.", "success");
+                                    }).catch(function(e) { console.log(e); });
+                                }
+                            }, 'image/png');
+                        } catch(e) {}
+                        
+                        setTimeout(function() { window.open(waUrl, '_blank'); }, 800);
+                    }
+                }, 'image/jpeg', 0.85);
 
             } else if (exportType === 'pdf') {
                 loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'jspdf', function() {
