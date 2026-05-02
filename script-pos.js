@@ -601,7 +601,6 @@ function submitStaffTransaction() {
         }
         window.isQuotaConfirmed = false; 
 
-        // ZETTBOT RESTORED FIX: AUTO CREATE CUSTOMER
         let idPelanggan = '';
         let cust = (appData.pelanggan || []).find(p => p && p['Nama Pelanggan'] === nama);
         
@@ -858,7 +857,6 @@ function saveTxDetailStatus() {
     var newStatus = document.getElementById('tx-detail-status').value; 
     var newPembayaran = document.getElementById('tx-detail-pembayaran').value; 
 
-    // ZETTBOT FIX: Rule Staff - Transaksi Belum Lunas Tidak Bisa Diambil
     if (currentUser && currentUser.Role !== 'ADMIN') {
         if (newStatus === 'Diambil' && newPembayaran !== 'Lunas' && newPembayaran !== 'Potong Kuota') {
             showToast("Akses Ditolak! Transaksi harus dilunasi sebelum diambil.", "error");
@@ -1171,21 +1169,36 @@ function actionSendWA(idOverride) {
     var namaToko = typeof appSettings !== 'undefined' && appSettings.nama ? appSettings.nama : 'Waroenk Laundry';
     var txt = '';
 
+    // ZETTBOT FIX: Baca nilai dropdown status dan pembayaran DARI FORM jika modal edit sedang terbuka
+    var currentStatus = tx['Status'] || 'Proses';
+    var currentPmb = tx['Pembayaran'] || 'Belum Lunas';
+    
+    var editModal = document.getElementById('modal-tx-detail');
+    if (editModal && !editModal.classList.contains('hidden')) {
+        var elStatus = document.getElementById('tx-detail-status');
+        if (elStatus) currentStatus = elStatus.value;
+        
+        var elPmb = document.getElementById('tx-detail-pembayaran');
+        if (elPmb) currentPmb = elPmb.value;
+    }
+
     var totalHarga = Number(tx['Total Harga'] || 0);
     var sisaBayar = Number(tx['Sisa Bayar'] !== undefined ? tx['Sisa Bayar'] : totalHarga);
+    if (currentPmb === 'Lunas' || currentPmb === 'Potong Kuota') sisaBayar = 0;
+    
     var dp = Number(tx['DP'] || 0);
-    var pmbStatus = tx['Pembayaran'] || 'Belum Lunas';
     var noNota = tx['No Nota'] || tx['ID'];
     var tglMasuk = tx['Waktu Masuk'] ? String(tx['Waktu Masuk']).split(' ')[0] : '-';
 
-    if (tx['Status'] === 'Selesai') {
+    // Logika pengiriman berdasarkan status TERKINI
+    if (currentStatus === 'Selesai') {
         txt = 'Halo Kak *' + cust.nama + '* 👋\n\n';
         txt += 'Kabar gembira! 🎉 Cucian kakak dengan No Nota *' + noNota + '* sudah *SELESAI* dan siap dijemput di *' + namaToko + '* 🧺✨\n\n';
         
         txt += '💰 *INFO TAGIHAN*\n';
         txt += 'Total Biaya: *Rp ' + totalHarga.toLocaleString('id-ID') + '*\n';
-        txt += 'Status Pembayaran: *' + pmbStatus + '*\n';
-        if (pmbStatus !== 'Lunas' && pmbStatus !== 'Potong Kuota' && sisaBayar > 0) {
+        txt += 'Status Pembayaran: *' + currentPmb + '*\n';
+        if (currentPmb !== 'Lunas' && currentPmb !== 'Potong Kuota' && sisaBayar > 0) {
             txt += 'Sisa Tagihan: *Rp ' + sisaBayar.toLocaleString('id-ID') + '*\n';
         }
         
@@ -1224,7 +1237,7 @@ function actionSendWA(idOverride) {
                 var itemEst = item.estimasiSelesai ? String(item.estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
                 var estStr = (!allSameDate && itemEst) ? '\n  Selesai: _' + itemEst + '_' : '';
                 
-                if (pmbStatus === 'Potong Kuota' && item.satuan === 'Kg') {
+                if (currentPmb === 'Potong Kuota' && item.satuan === 'Kg') {
                     txt += '- ' + item.nama + ' (' + item.qty + ' ' + item.satuan + ')' + estStr + '\n\n';
                 } else {
                     txt += '- ' + item.nama + ' (' + item.qty + ' ' + item.satuan + ' x ' + Number(item.subtotal/item.qty).toLocaleString('id-ID') + ') = Rp ' + Number(item.subtotal).toLocaleString('id-ID') + estStr + '\n\n';
@@ -1235,7 +1248,7 @@ function actionSendWA(idOverride) {
         }
         
         txt += '======================\n';
-        if (pmbStatus !== 'Potong Kuota' || totalHarga > 0) {
+        if (currentPmb !== 'Potong Kuota' || totalHarga > 0) {
             if (items.length > 0) txt += 'Subtotal: Rp ' + Number(subtotalTx).toLocaleString('id-ID') + '\n';
             if (diskonTx > 0) txt += 'Diskon: - Rp ' + diskonTx.toLocaleString('id-ID') + '\n';
             txt += '*Total Harga: Rp ' + totalHarga.toLocaleString('id-ID') + '*\n';
@@ -1245,15 +1258,15 @@ function actionSendWA(idOverride) {
         txt += '======================\n\n';
         
         txt += '💰 *STATUS PEMBAYARAN*\n';
-        txt += 'Status: *' + pmbStatus + '*\n';
-        if (pmbStatus === 'DP') {
+        txt += 'Status: *' + currentPmb + '*\n';
+        if (currentPmb === 'DP') {
             txt += 'DP: Rp ' + dp.toLocaleString('id-ID') + '\n';
             txt += 'Sisa Tagihan: *Rp ' + sisaBayar.toLocaleString('id-ID') + '*\n';
-        } else if (pmbStatus === 'Belum Lunas' && totalHarga > 0) {
+        } else if (currentPmb === 'Belum Lunas' && totalHarga > 0) {
             txt += 'Sisa Tagihan: *Rp ' + sisaBayar.toLocaleString('id-ID') + '*\n';
         }
         
-        txt += '\n⚙️ *Status Cucian:* _' + (tx['Status'] || 'Proses') + '_\n\n';
+        txt += '\n⚙️ *Status Cucian:* _' + currentStatus + '_\n\n';
         txt += '_Kami akan mengabari kakak kembali jika cucian sudah selesai. Terima kasih!_ ✨';
     }
 
