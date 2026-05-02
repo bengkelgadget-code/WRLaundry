@@ -1135,7 +1135,7 @@ function exportHistory(exportType) {
                 phone = phone.replace(/\D/g, ''); 
                 if (phone.startsWith('0')) phone = '62' + phone.substring(1);
                 
-                var waMsg = "Halo Kak *" + custName + "*,\nBerikut adalah lampiran laporan/rekap transaksi Anda. Mohon konfirmasi laporan yang telah kami bagikan ya. Terima kasih! 🙏";
+                var waMsg = "Halo *" + custName + "*,\nBerikut adalah lampiran laporan/rekap transaksi Anda. Mohon konfirmasi laporan yang telah kami bagikan ya. Terima kasih! 🙏";
                 
                 canvas.toBlob(function(blobJpeg) {
                     var file = new File([blobJpeg], fileName, { type: 'image/jpeg' });
