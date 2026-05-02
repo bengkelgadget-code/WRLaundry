@@ -1192,17 +1192,14 @@ function actionSendWA(idOverride) {
 
     // Logika pengiriman berdasarkan status TERKINI
     if (currentStatus === 'Selesai') {
-        txt = 'Halo Kak *' + cust.nama + '* 👋\n\n';
-        txt += 'Kabar gembira! 🎉 Cucian kakak dengan No Nota *' + noNota + '* sudah *SELESAI* dan siap dijemput di *' + namaToko + '* 🧺✨\n\n';
-        
-        txt += '💰 *INFO TAGIHAN*\n';
-        txt += 'Total Biaya: *Rp ' + totalHarga.toLocaleString('id-ID') + '*\n';
-        txt += 'Status Pembayaran: *' + currentPmb + '*\n';
-        if (currentPmb !== 'Lunas' && currentPmb !== 'Potong Kuota' && sisaBayar > 0) {
-            txt += 'Sisa Tagihan: *Rp ' + sisaBayar.toLocaleString('id-ID') + '*\n';
-        }
-        
-        txt += '\nDitunggu kedatangannya ya Kak. Terima kasih! 🙏';
+        txt = 'Hai Kak ' + cust.nama.toUpperCase() + ' laundry anda sudah selesai,\n';
+        txt += 'siap untuk diambil\n';
+        txt += 'silahkan datang kelaundry kami. Terimakasi\n\n';
+        txt += '----------------------------------------\n';
+        txt += 'NO. Nota     : ' + noNota + '\n';
+        txt += 'Status Bayar : ' + currentPmb + '\n';
+        txt += 'Sisa tagihan : Rp. ' + sisaBayar.toLocaleString('id-ID') + '\n';
+        txt += '========================================';
     } else {
         var items = [];
         var diskonTx = 0;
