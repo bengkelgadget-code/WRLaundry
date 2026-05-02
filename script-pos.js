@@ -6,7 +6,7 @@
 window.toggleDateFilter = function(isActive) {
     var wrapper = document.getElementById('staff-filter-date-wrapper');
     var input = document.getElementById('staff-filter-date');
-    var btn = document.getElementB8yId('staff-filter-date-btn');
+    var btn = document.getElementById('staff-filter-date-btn');
     var text = document.getElementById('staff-filter-date-text');
     
     if (isActive) {
@@ -738,7 +738,6 @@ function submitStaffTransaction() {
                         var compressedBase64 = canvas.toDataURL('image/jpeg', 0.7); 
                         var pureBase64 = compressedBase64.split(',')[1];
                         
-                        // ZETTBOT OPTIMISTIC UI: Pasang base64 langsung ke objek untuk tampilan UI Instan
                         recordObj['Foto'] = compressedBase64;
                         recordObjForSheets['Foto'] = compressedBase64;
                         
@@ -766,9 +765,6 @@ function submitStaffTransaction() {
 function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
     if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
     
-    // ===================================================================
-    // 1. OPTIMISTIC UI: Simpan Instan ke Memori Lokal & Layar Kasir
-    // ===================================================================
     var existsIdx = appData.produksi.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
     if (existsIdx >= 0) { appData.produksi[existsIdx] = recordObj; } else { appData.produksi.push(recordObj); }
 
@@ -794,9 +790,6 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
     document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx);
     showSuccessModal();
 
-    // ===================================================================
-    // 2. BACKGROUND SYNC ROUTINE
-    // ===================================================================
     var payloadToBackend = recordObjForSheets || recordObj;
 
     var sendToBackend = function(finalPayload, fallbackFileData) {
@@ -821,7 +814,7 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
                         appData.produksi = mergeProduksiData(resData.data);
                         let safeguardIdx = appData.produksi.findIndex(tx => String(tx.ID) === String(recordObj.ID));
                         if (safeguardIdx >= 0) {
-                            appData.produksi[safeguardIdx] = recordObj; // Jaga URL / Foto ImgBB Kita!
+                            appData.produksi[safeguardIdx] = recordObj; 
                         } else {
                             appData.produksi.push(recordObj);
                         }
@@ -845,9 +838,6 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
         }
     };
 
-    // ===================================================================
-    // 3. IMGBB API UPLOAD (JIKA ADA FOTO)
-    // ===================================================================
     if (fileBase64) {
         var formData = new FormData();
         formData.append('key', '1385b0fe68f5d634ae837ec3d1e4f4a3');
@@ -862,11 +852,9 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
             if (result.success) {
                 var imgUrl = result.data.url;
                 
-                // Ganti foto base64 lokal menjadi link permanen dari ImgBB
                 recordObj['Foto'] = imgUrl;
                 payloadToBackend['Foto'] = imgUrl;
 
-                // Update kembali ke Firebase agar file base64 yang berat segera terhapus
                 let idx = appData.produksi.findIndex(tx => String(tx.ID) === String(recordObj.ID));
                 if (idx >= 0) appData.produksi[idx]['Foto'] = imgUrl;
                 if (currentSavedTx && String(currentSavedTx.ID) === String(recordObj.ID)) currentSavedTx['Foto'] = imgUrl;
@@ -875,7 +863,6 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
                     database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
                 }
                 
-                // Teruskan data ke Google Sheets (Hanya berupa link string)
                 sendToBackend(payloadToBackend, null);
             } else {
                 console.warn("ImgBB Gagal, fallback ke Google Drive");
@@ -887,7 +874,6 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
             sendToBackend(payloadToBackend, { filename: recordObj.ID + '.jpg', mimeType: 'image/jpeg', base64: fileBase64 });
         });
     } else {
-        // Jika tidak ada foto, langsung lempar ke Google Sheets
         sendToBackend(payloadToBackend, null);
     }
 }
@@ -1131,9 +1117,11 @@ function generateReceiptHTML(px) {
     }
     paymentHTML += '</table>';
     
+    // ZETTBOT FIX: Resolusi akurat pelanggan sebelum merender PDF/HTML receipt
     var kasirName = (currentUser && currentUser['Nama Lengkap']) ? currentUser['Nama Lengkap'] : 'Admin';
     var tglMasuk = (px['Waktu Masuk'] ? String(px['Waktu Masuk']).split(' ')[0] : '-'); 
-    var nameCust = px['Nama Pelanggan'] || '-';
+    var custResolved = typeof resolvePelanggan === 'function' ? resolvePelanggan(px['ID Pelanggan'], px) : {nama: px['Nama Pelanggan']};
+    var nameCust = custResolved.nama || px['Nama Pelanggan'] || '-';
     var nameFontSize = nameCust.length > 15 ? '16px' : '22px'; 
 
     var finalHtml = '<div style="font-family: monospace; color: black; font-size: 11px; width: 100%;">';
@@ -1192,7 +1180,11 @@ function generateRawTextReceipt(px) {
     str += "No. Nota : " + (px['No Nota'] || '-') + "\n";
     str += "\n";
     str += center;
-    var nameCust = (px['Nama Pelanggan'] || '-');
+    
+    // ZETTBOT FIX: Pastikan nama pelanggan selalu ter-resolve dengan fungsi cerdas via Master Data
+    var custResolved = typeof resolvePelanggan === 'function' ? resolvePelanggan(px['ID Pelanggan'], px) : {nama: px['Nama Pelanggan']};
+    var nameCust = custResolved.nama || px['Nama Pelanggan'] || '-';
+    
     if (nameCust.length > 15) { str += sizeDoubleHeight + nameCust + "\n"; } else { str += sizeDouble + nameCust + "\n"; }
     str += sizeNormal;
     str += left;
