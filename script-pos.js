@@ -1199,7 +1199,7 @@ function actionSendWA(idOverride) {
         txt += 'NO. Nota     : ' + noNota + '\n';
         txt += 'Status Bayar : ' + currentPmb + '\n';
         txt += 'Sisa tagihan : Rp. ' + sisaBayar.toLocaleString('id-ID') + '\n';
-        txt += '========================================';
+        txt += '=============================';
     } else {
         var items = [];
         var diskonTx = 0;
