@@ -1028,7 +1028,7 @@ function exportHistory(exportType) {
         container.style.top = '-9999px';
         container.style.width = '700px';
         container.style.backgroundColor = '#ffffff';
-        container.style.padding = '30px';
+        container.style.padding = '20px';
         container.style.fontFamily = 'Arial, sans-serif';
         container.style.color = '#000000';
         document.body.appendChild(container);
@@ -1051,18 +1051,18 @@ function exportHistory(exportType) {
         }
     }
 
-    var html = '<table style="width: 100%; border: none; font-size: 15px; margin-bottom: 20px; font-weight: bold; text-align: left;">';
-    html += '<tr><td style="width: 120px; padding: 4px 0;">Nama</td><td>: ' + custName.toUpperCase() + '</td></tr>';
-    html += '<tr><td style="padding: 4px 0;">ID Cust</td><td>: ' + (currentHistoryCustId || '-') + '</td></tr>';
-    html += '<tr><td style="padding: 4px 0;">Bulan/Periode</td><td>: ' + periode + '</td></tr>';
+    var html = '<table style="width: 100%; border: none; font-size: 13px; margin-bottom: 12px; font-weight: bold; text-align: left;">';
+    html += '<tr><td style="width: 120px; padding: 2px 0;">Nama</td><td>: ' + custName.toUpperCase() + '</td></tr>';
+    html += '<tr><td style="padding: 2px 0;">ID Cust</td><td>: ' + (currentHistoryCustId || '-') + '</td></tr>';
+    html += '<tr><td style="padding: 2px 0;">Bulan/Periode</td><td>: ' + periode + '</td></tr>';
     html += '</table>';
 
-    html += '<table style="width: 100%; border-collapse: collapse; font-size: 15px; text-align: center;">';
+    html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center;">';
     html += '<thead><tr style="background-color: #203864; color: white;">';
-    html += '<th style="border: 1px solid #000; padding: 10px;">TANGGAL</th>';
-    html += '<th style="border: 1px solid #000; padding: 10px;">LAYANAN</th>';
-    html += '<th style="border: 1px solid #000; padding: 10px;">KG/PCS</th>';
-    html += '<th style="border: 1px solid #000; padding: 10px;">NOMINAL</th>';
+    html += '<th style="border: 1px solid #000; padding: 4px 6px;">TANGGAL</th>';
+    html += '<th style="border: 1px solid #000; padding: 4px 6px;">LAYANAN</th>';
+    html += '<th style="border: 1px solid #000; padding: 4px 6px;">KG/PCS</th>';
+    html += '<th style="border: 1px solid #000; padding: 4px 6px;">NOMINAL</th>';
     html += '</tr></thead><tbody>';
 
     var totalQty = 0;
@@ -1090,29 +1090,29 @@ function exportHistory(exportType) {
 
                 html += '<tr>';
                 if (index === 0) {
-                    html += '<td style="border: 1px solid #000; padding: 10px;" rowspan="' + items.length + '">' + tglStr + '</td>';
+                    html += '<td style="border: 1px solid #000; padding: 4px 6px;" rowspan="' + items.length + '">' + tglStr + '</td>';
                 }
-                html += '<td style="border: 1px solid #000; padding: 10px; text-align: left;">' + item.nama.toUpperCase() + '</td>';
-                html += '<td style="border: 1px solid #000; padding: 10px;">' + qty + '</td>';
-                html += '<td style="border: 1px solid #000; padding: 10px; text-align: right;">' + subtotal.toLocaleString('id-ID').replace(/\./g, ',') + '</td>';
+                html += '<td style="border: 1px solid #000; padding: 4px 6px; text-align: left;">' + item.nama.toUpperCase() + '</td>';
+                html += '<td style="border: 1px solid #000; padding: 4px 6px;">' + qty + '</td>';
+                html += '<td style="border: 1px solid #000; padding: 4px 6px; text-align: right;">' + subtotal.toLocaleString('id-ID').replace(/\./g, ',') + '</td>';
                 html += '</tr>';
             });
         } else {
             var subtotal = parseFloat(tx['Total Harga']) || 0;
             totalRp += subtotal;
             html += '<tr>';
-            html += '<td style="border: 1px solid #000; padding: 10px;">' + tglStr + '</td>';
-            html += '<td style="border: 1px solid #000; padding: 10px; text-align: left;">' + (tx['Layanan'] || '-').toUpperCase() + '</td>';
-            html += '<td style="border: 1px solid #000; padding: 10px;">-</td>';
-            html += '<td style="border: 1px solid #000; padding: 10px; text-align: right;">' + subtotal.toLocaleString('id-ID').replace(/\./g, ',') + '</td>';
+            html += '<td style="border: 1px solid #000; padding: 4px 6px;">' + tglStr + '</td>';
+            html += '<td style="border: 1px solid #000; padding: 4px 6px; text-align: left;">' + (tx['Layanan'] || '-').toUpperCase() + '</td>';
+            html += '<td style="border: 1px solid #000; padding: 4px 6px;">-</td>';
+            html += '<td style="border: 1px solid #000; padding: 4px 6px; text-align: right;">' + subtotal.toLocaleString('id-ID').replace(/\./g, ',') + '</td>';
             html += '</tr>';
         }
     });
 
     html += '</tbody><tfoot><tr>';
-    html += '<td colspan="2" style="border: 1px solid #000; padding: 10px; border-right: none;"></td>';
-    html += '<td style="border: 1px solid #000; padding: 10px; font-weight: bold;">' + (Math.round(totalQty*100)/100) + '</td>';
-    html += '<td style="border: 1px solid #000; padding: 10px; font-weight: bold; text-align: right;">' + totalRp.toLocaleString('id-ID').replace(/\./g, ',') + '</td>';
+    html += '<td colspan="2" style="border: 1px solid #000; padding: 4px 6px; border-right: none;"></td>';
+    html += '<td style="border: 1px solid #000; padding: 4px 6px; font-weight: bold;">' + (Math.round(totalQty*100)/100) + '</td>';
+    html += '<td style="border: 1px solid #000; padding: 4px 6px; font-weight: bold; text-align: right;">' + totalRp.toLocaleString('id-ID').replace(/\./g, ',') + '</td>';
     html += '</tr></tfoot></table>';
 
     container.innerHTML = html;
@@ -1126,7 +1126,7 @@ function exportHistory(exportType) {
     }
 
     loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'html2canvas', function() {
-        html2canvas(container, { scale: 1.5, useCORS: true, backgroundColor: '#ffffff' }).then(function(canvas) {
+        html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' }).then(function(canvas) {
             var imgData = canvas.toDataURL('image/jpeg', 0.85);
             
             if (exportType === 'wa') {
@@ -1141,10 +1141,23 @@ function exportHistory(exportType) {
                 phone = phone.replace(/\D/g, ''); 
                 if (phone.startsWith('0')) phone = '62' + phone.substring(1);
                 
-                var waMsg = "Halo *" + custName + "*,\nBerikut adalah lampiran laporan/rekap transaksi Anda. Mohon konfirmasi gambar laporan yang telah kami unduhkan ya. Terima kasih! 🙏";
+                var waMsg = "Halo *" + custName + "*,\nBerikut adalah lampiran laporan/rekap transaksi Anda. Mohon konfirmasi laporan yang telah kami unduhkan ya. Terima kasih! 🙏";
                 var waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(waMsg);
                 
-                setTimeout(function() { window.open(waUrl, '_blank'); }, 600);
+                // ZETTBOT FIX: Auto-copy ke clipboard agar mudah di-paste di WhatsApp Web
+                try {
+                    canvas.toBlob(function(blob) {
+                        if (navigator.clipboard && navigator.clipboard.write) {
+                            navigator.clipboard.write([
+                                new ClipboardItem({ 'image/png': blob })
+                            ]).then(function() {
+                                showToast("Gambar disalin! Tekan Paste (Ctrl+V) di WhatsApp.", "success");
+                            }).catch(function(e) { console.log(e); });
+                        }
+                    }, 'image/png');
+                } catch(e) {}
+                
+                setTimeout(function() { window.open(waUrl, '_blank'); }, 800);
 
             } else if (exportType === 'pdf') {
                 loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'jspdf', function() {
