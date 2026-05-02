@@ -601,6 +601,9 @@ function submitStaffTransaction() {
         }
         window.isQuotaConfirmed = false; 
 
+        // ZETTBOT FIX: Pastikan tanda kutip untuk Google Sheets dikelola dengan terpisah!
+        var finalHp = hp; if (finalHp.startsWith('0')) finalHp = "'" + finalHp;
+
         let idPelanggan = '';
         let cust = (appData.pelanggan || []).find(p => p && p['Nama Pelanggan'] === nama);
         
@@ -618,7 +621,8 @@ function submitStaffTransaction() {
             });
             idPelanggan = 'PLG-' + String(maxPlg + 1).padStart(4, '0');
             
-            let newCust = {
+            // Local Payload (Tanpa Kutip agar UI bersih)
+            let newCustLocal = {
                 'ID': idPelanggan,
                 'Nama Pelanggan': nama,
                 'No Telpon': hp,
@@ -626,7 +630,12 @@ function submitStaffTransaction() {
                 'Paket Member': '',
                 'Sisa Kuota (Kg)': 0
             };
-            appData.pelanggan.push(newCust);
+            
+            // Sheets Payload (Dengan Kutip agar 0 tidak hilang)
+            let newCustSheets = JSON.parse(JSON.stringify(newCustLocal));
+            newCustSheets['No Telpon'] = finalHp;
+            
+            appData.pelanggan.push(newCustLocal);
             
             if (typeof sortDataByIdDesc === 'function') appData.pelanggan = sortDataByIdDesc(appData.pelanggan);
             if (typeof database !== 'undefined' && database) database.ref('appData/pelanggan').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.pelanggan) : appData.pelanggan);
@@ -634,7 +643,7 @@ function submitStaffTransaction() {
             if (typeof GAS_URL !== 'undefined') {
                 fetch(GAS_URL, { 
                     method: 'POST', 
-                    body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: 'Pelanggan', data: newCust} }) 
+                    body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: 'Pelanggan', data: newCustSheets} }) 
                 }).catch(e => console.warn("Auto-save failed: ", e));
             }
         }
@@ -650,7 +659,7 @@ function submitStaffTransaction() {
         });
         
         if(!isValid) { showToast('Pastikan Qty layanan terisi benar!', 'error'); return; }
-        var finalHp = hp; if (finalHp.startsWith('0')) finalHp = "'" + finalHp;
+        
         var finalJSON = { items: detailJSON, subtotal: calcRes.subtotalAll, diskon: calcRes.diskon, potonganMember: calcRes.potonganMember, kgTerpakai: calcRes.kgTerpakai };
         
         let maxNum = 0;
@@ -682,12 +691,13 @@ function submitStaffTransaction() {
         let noNota = notaPrefix + String(maxNota+1).padStart(3,'0');
         let waktuMasuk = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
         
+        // ZETTBOT FIX: Local Record tanpa kutip
         var recordObj = { 
             'ID': txId,
             'Waktu Masuk': waktuMasuk,
             'ID Pelanggan': idPelanggan,
             'Nama Pelanggan': nama, 
-            'No Telpon': finalHp, 
+            'No Telpon': hp, // Polos untuk memori lokal
             'Layanan': detailArr.join(' + '), 
             'Status': 'Proses',
             'Total Harga': total, 
@@ -698,6 +708,10 @@ function submitStaffTransaction() {
             'Detail Layanan JSON': JSON.stringify(finalJSON), 
             'Kg Terpakai': calcRes.kgTerpakai 
         };
+
+        // ZETTBOT FIX: Record untuk dikirim ke Sheets (dengan kutip)
+        var recordObjForSheets = JSON.parse(JSON.stringify(recordObj));
+        recordObjForSheets['No Telpon'] = finalHp;
 
         if (btn) { btn.innerHTML = '<i class="ph-bold ph-spinner animate-spin mr-2 text-xl"></i> SIMPAN...'; btn.disabled = true; }
 
@@ -712,20 +726,19 @@ function submitStaffTransaction() {
                         if (width > height) { if (width > maxSize) { height = Math.round(height * (maxSize / width)); width = maxSize; } } else { if (height > maxSize) { width = Math.round(width * (maxSize / height)); height = maxSize; } }
                         canvas.width = width; canvas.height = height; var ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
                         var compressedBase64 = canvas.toDataURL('image/jpeg', 0.7); var newFilename = file.name.replace(/\.[^/.]+$/, "") + ".jpg"; var pureBase64 = compressedBase64.split(',')[1];
-                        execSaveStaff(recordObj, { filename: newFilename, mimeType: 'image/jpeg', base64: pureBase64 }, btn); 
+                        execSaveStaff(recordObj, { filename: newFilename, mimeType: 'image/jpeg', base64: pureBase64 }, btn, recordObjForSheets); 
                     };
-                    img.onerror = function() { var pureBase64 = e.target.result.split(',')[1]; execSaveStaff(recordObj, { filename: file.name, mimeType: file.type, base64: pureBase64 }, btn); };
+                    img.onerror = function() { var pureBase64 = e.target.result.split(',')[1]; execSaveStaff(recordObj, { filename: file.name, mimeType: file.type, base64: pureBase64 }, btn, recordObjForSheets); };
                     img.src = e.target.result;
-                } catch(err) { var pureBase64 = e.target.result.split(',')[1]; execSaveStaff(recordObj, { filename: file.name, mimeType: file.type, base64: pureBase64 }, btn); }
+                } catch(err) { var pureBase64 = e.target.result.split(',')[1]; execSaveStaff(recordObj, { filename: file.name, mimeType: file.type, base64: pureBase64 }, btn, recordObjForSheets); }
             };
             reader.readAsDataURL(file);
-        } else { execSaveStaff(recordObj, null, btn); }
+        } else { execSaveStaff(recordObj, null, btn, recordObjForSheets); }
     } catch (error) { console.error(error); showToast("Error sistem: " + error.message, "error"); var btn = document.getElementById('btn-submit-staff'); if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; } }
 }
 
-function execSaveStaff(recordObj, fileData, btn) {
+function execSaveStaff(recordObj, fileData, btn, recordObjForSheets) {
     if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
-    if(String(recordObj['No Telpon']).startsWith("'")) { recordObj['No Telpon'] = recordObj['No Telpon'].substring(1); }
     
     var existsIdx = appData.produksi.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
     if (existsIdx >= 0) { appData.produksi[existsIdx] = recordObj; } else { appData.produksi.push(recordObj); }
@@ -752,6 +765,9 @@ function execSaveStaff(recordObj, fileData, btn) {
     document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx);
     showSuccessModal();
 
+    // ZETTBOT FIX: Gunakan payload khusus Sheets agar kutip terkirim
+    var payloadToBackend = recordObjForSheets || recordObj;
+
     var isGasNative = (typeof google !== 'undefined' && 
                        google.script && 
                        typeof google.script.run === 'object' &&
@@ -763,9 +779,9 @@ function execSaveStaff(recordObj, fileData, btn) {
         google.script.run
             .withSuccessHandler(function(res) {})
             .withFailureHandler(function(error) {})
-            .saveTransaksiStaff(recordObj, fileData);
+            .saveTransaksiStaff(payloadToBackend, fileData);
     } else {
-        var payload = (fileData) ? { recordObj: recordObj, fileData: fileData } : { recordObj: recordObj };
+        var payload = (fileData) ? { recordObj: payloadToBackend, fileData: fileData } : { recordObj: payloadToBackend };
         
         fetch(typeof GAS_URL !== 'undefined' ? GAS_URL : '', {
             method: 'POST',
@@ -1199,7 +1215,7 @@ function actionSendWA(idOverride) {
         txt += 'NO. Nota     : ' + noNota + '\n';
         txt += 'Status Bayar : ' + currentPmb + '\n';
         txt += 'Sisa tagihan : Rp. ' + sisaBayar.toLocaleString('id-ID') + '\n';
-        txt += '=============================';
+        txt += '========================================';
     } else {
         var items = [];
         var diskonTx = 0;
