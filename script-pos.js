@@ -6,7 +6,7 @@
 window.toggleDateFilter = function(isActive) {
     var wrapper = document.getElementById('staff-filter-date-wrapper');
     var input = document.getElementById('staff-filter-date');
-    var btn = document.getElementById('staff-filter-date-btn');
+    var btn = document.getElementB8yId('staff-filter-date-btn');
     var text = document.getElementById('staff-filter-date-text');
     
     if (isActive) {
