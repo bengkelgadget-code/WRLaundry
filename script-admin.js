@@ -164,16 +164,23 @@ function generateDynamicViews() {
                     '</div>';
     }
 
+    // ZETTBOT FIX: Modifikasi Filter di History Modal untuk lebih ringkas dan tambahkan tombol export sejajar & melayang
     var historyModalHtml = '<div id="modal-history-pelanggan" style="z-index: 9998;" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4">' +
                             '<div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg flex flex-col relative modal-enter overflow-hidden max-h-[90vh]">' +
                                 '<div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white z-20 shrink-0">' +
                                     '<h3 class="text-lg font-black text-slate-800 tracking-tight flex items-center truncate"><i class="ph-bold ph-clock-counter-clockwise mr-2 text-teal-600"></i> History: <span id="history-cust-name" class="ml-2 text-teal-600 truncate max-w-[150px]"></span></h3>' +
                                     '<button type="button" onclick="closeModal(\'modal-history-pelanggan\')" class="w-8 h-8 bg-slate-100 text-slate-500 rounded-full flex items-center justify-center hover:bg-red-100 hover:text-red-600 transition-colors shrink-0"><i class="ph-bold ph-x"></i></button>' +
                                 '</div>' +
-                                '<div class="p-4 bg-slate-50 border-b border-slate-100 flex gap-2 z-10 shrink-0">' +
-                                    '<select id="filter-history-type" onchange="renderHistoryPelanggan()" class="w-1/2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-teal-300"><option value="all">Semua Waktu</option><option value="month">Per Bulan</option><option value="date">Per Tanggal</option></select>' +
-                                    '<input type="month" id="filter-history-month" onchange="renderHistoryPelanggan()" class="hidden w-1/2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-teal-300">' +
-                                    '<input type="date" id="filter-history-date" onchange="renderHistoryPelanggan()" class="hidden w-1/2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-teal-300">' +
+                                '<div class="p-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between gap-3 z-10 shrink-0 flex-wrap">' +
+                                    '<div class="flex gap-1 items-center flex-1 min-w-[200px]">' +
+                                        '<select id="filter-history-type" onchange="renderHistoryPelanggan()" class="w-1/3 px-2 py-2 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-teal-300"><option value="all">Semua</option><option value="month">Per Bulan</option><option value="date">Tanggal</option></select>' +
+                                        '<input type="month" id="filter-history-month" onchange="renderHistoryPelanggan()" class="hidden w-2/3 px-2 py-2 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-teal-300">' +
+                                        '<input type="date" id="filter-history-date" onchange="renderHistoryPelanggan()" class="hidden w-2/3 px-2 py-2 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-teal-300">' +
+                                    '</div>' +
+                                    '<div class="flex gap-2 shrink-0">' +
+                                        '<button type="button" onclick="exportHistory(\'pdf\')" class="flex items-center justify-center bg-white text-rose-500 border border-rose-100 shadow-[0_4px_10px_rgba(244,63,94,0.15)] hover:shadow-[0_6px_15px_rgba(244,63,94,0.2)] hover:-translate-y-0.5 rounded-xl px-4 py-2 text-[11px] font-black transition-all active:scale-95"><i class="ph-bold ph-file-pdf text-sm mr-1.5"></i> PDF</button>' +
+                                        '<button type="button" onclick="exportHistory(\'wa\')" class="flex items-center justify-center bg-gradient-to-r from-emerald-400 to-emerald-500 text-white shadow-[0_4px_10px_rgba(16,185,129,0.3)] hover:shadow-[0_6px_15px_rgba(16,185,129,0.4)] hover:-translate-y-0.5 rounded-xl px-4 py-2 text-[11px] font-black transition-all active:scale-95"><i class="ph-bold ph-whatsapp-logo text-sm mr-1.5"></i> WA</button>' +
+                                    '</div>' +
                                 '</div>' +
                                 '<div class="overflow-y-auto flex-1 p-4 bg-slate-50 w-full relative" id="history-list-container"></div>' +
                                 '<div class="p-4 bg-white border-t border-slate-100 shrink-0 grid grid-cols-3 gap-2 text-center shadow-[0_-5px_15px_rgba(0,0,0,0.02)] z-20">' +
@@ -867,10 +874,17 @@ var currentHistoryCustId = null;
 
 function openHistoryPelanggan(id) {
     currentHistoryCustId = id;
-    var cust = (appData.pelanggan || []).find(function(c) { return String(c['ID']) === String(id); });
-    if (!cust) { showToast('Pelanggan tidak ditemukan', 'error'); return; }
     
-    document.getElementById('history-cust-name').innerText = cust['Nama Pelanggan'];
+    var custName = 'Unknown';
+    var cust = (appData.pelanggan || []).find(function(c) { return String(c['ID']) === String(id); });
+    if (cust) {
+        custName = cust['Nama Pelanggan'];
+    } else {
+        var prodFallback = (appData.produksi || []).find(function(tx) { return String(tx['ID Pelanggan']) === String(id); });
+        if (prodFallback) custName = prodFallback['Nama Pelanggan'];
+    }
+    
+    document.getElementById('history-cust-name').innerText = custName;
     
     document.getElementById('filter-history-type').value = 'all';
     document.getElementById('filter-history-month').value = '';
@@ -939,6 +953,8 @@ function renderHistoryPelanggan() {
         return true; 
     });
     
+    window.currentHistoryFilteredTx = filteredTx;
+    
     var totalKg = 0;
     var totalPcs = 0;
     var totalRp = 0;
@@ -991,4 +1007,157 @@ function renderHistoryPelanggan() {
     document.getElementById('history-total-kg').innerText = (Math.round(totalKg * 100) / 100) + ' Kg';
     document.getElementById('history-total-pcs').innerText = totalPcs + ' Pcs';
     document.getElementById('history-total-rp').innerText = 'Rp ' + totalRp.toLocaleString('id-ID');
+}
+
+function exportHistory(exportType) {
+    var custName = document.getElementById('history-cust-name').innerText;
+    var cust = (appData.pelanggan || []).find(function(c) { return String(c['ID']) === String(currentHistoryCustId); });
+    var custPhone = cust ? cust['No Telpon'] : '';
+    
+    var txData = window.currentHistoryFilteredTx || [];
+    if (txData.length === 0) return showToast("Tidak ada data transaksi untuk diexport", "error");
+
+    showToast("Memproses laporan...", "success");
+
+    var container = document.getElementById('report-export-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'report-export-container';
+        container.style.position = 'absolute';
+        container.style.left = '-9999px';
+        container.style.top = '-9999px';
+        container.style.width = '700px';
+        container.style.backgroundColor = '#ffffff';
+        container.style.padding = '30px';
+        container.style.fontFamily = 'Arial, sans-serif';
+        container.style.color = '#000000';
+        document.body.appendChild(container);
+    }
+
+    var filterType = document.getElementById('filter-history-type').value;
+    var periode = "SEMUA WAKTU";
+    if (filterType === 'month') {
+        var val = document.getElementById('filter-history-month').value;
+        if(val) {
+            var d = new Date(val + '-01');
+            var monthName = d.toLocaleString('id-ID', { month: 'long' });
+            periode = (monthName + ' ' + d.getFullYear()).toUpperCase();
+        }
+    } else if (filterType === 'date') {
+        var val = document.getElementById('filter-history-date').value;
+        if (val) {
+            var d = new Date(val);
+            periode = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase();
+        }
+    }
+
+    var html = '<table style="width: 100%; border: none; font-size: 15px; margin-bottom: 20px; font-weight: bold; text-align: left;">';
+    html += '<tr><td style="width: 120px; padding: 4px 0;">Nama</td><td>: ' + custName.toUpperCase() + '</td></tr>';
+    html += '<tr><td style="padding: 4px 0;">ID Cust</td><td>: ' + (currentHistoryCustId || '-') + '</td></tr>';
+    html += '<tr><td style="padding: 4px 0;">Bulan/Periode</td><td>: ' + periode + '</td></tr>';
+    html += '</table>';
+
+    html += '<table style="width: 100%; border-collapse: collapse; font-size: 15px; text-align: center;">';
+    html += '<thead><tr style="background-color: #203864; color: white;">';
+    html += '<th style="border: 1px solid #000; padding: 10px;">TANGGAL</th>';
+    html += '<th style="border: 1px solid #000; padding: 10px;">LAYANAN</th>';
+    html += '<th style="border: 1px solid #000; padding: 10px;">KG/PCS</th>';
+    html += '<th style="border: 1px solid #000; padding: 10px;">NOMINAL</th>';
+    html += '</tr></thead><tbody>';
+
+    var totalQty = 0;
+    var totalRp = 0;
+
+    txData.forEach(function(tx) {
+        var items = [];
+        try { 
+            var parsed = JSON.parse(tx['Detail Layanan JSON'] || '{}'); 
+            items = Array.isArray(parsed) ? parsed : (parsed.items || []); 
+        } catch(e) {}
+        
+        var tglRaw = tx['Waktu Masuk'] ? String(tx['Waktu Masuk']).split(' ')[0] : '-';
+        var tglStr = tglRaw;
+        var tp = tglRaw.split('/');
+        if(tp.length === 3) tglStr = tp[0] + '/' + tp[1] + '/' + tp[2];
+
+        if (items.length > 0) {
+            items.forEach(function(item, index) {
+                var qty = parseFloat(item.qty) || 0;
+                var subtotal = parseFloat(item.subtotal) || 0;
+                
+                totalQty += qty;
+                totalRp += subtotal;
+
+                html += '<tr>';
+                if (index === 0) {
+                    html += '<td style="border: 1px solid #000; padding: 10px;" rowspan="' + items.length + '">' + tglStr + '</td>';
+                }
+                html += '<td style="border: 1px solid #000; padding: 10px; text-align: left;">' + item.nama.toUpperCase() + '</td>';
+                html += '<td style="border: 1px solid #000; padding: 10px;">' + qty + '</td>';
+                html += '<td style="border: 1px solid #000; padding: 10px; text-align: right;">' + subtotal.toLocaleString('id-ID').replace(/\./g, ',') + '</td>';
+                html += '</tr>';
+            });
+        } else {
+            var subtotal = parseFloat(tx['Total Harga']) || 0;
+            totalRp += subtotal;
+            html += '<tr>';
+            html += '<td style="border: 1px solid #000; padding: 10px;">' + tglStr + '</td>';
+            html += '<td style="border: 1px solid #000; padding: 10px; text-align: left;">' + (tx['Layanan'] || '-').toUpperCase() + '</td>';
+            html += '<td style="border: 1px solid #000; padding: 10px;">-</td>';
+            html += '<td style="border: 1px solid #000; padding: 10px; text-align: right;">' + subtotal.toLocaleString('id-ID').replace(/\./g, ',') + '</td>';
+            html += '</tr>';
+        }
+    });
+
+    html += '</tbody><tfoot><tr>';
+    html += '<td colspan="2" style="border: 1px solid #000; padding: 10px; border-right: none;"></td>';
+    html += '<td style="border: 1px solid #000; padding: 10px; font-weight: bold;">' + (Math.round(totalQty*100)/100) + '</td>';
+    html += '<td style="border: 1px solid #000; padding: 10px; font-weight: bold; text-align: right;">' + totalRp.toLocaleString('id-ID').replace(/\./g, ',') + '</td>';
+    html += '</tr></tfoot></table>';
+
+    container.innerHTML = html;
+
+    function loadScript(src, checkVar, callback) {
+        if (window[checkVar]) { callback(); return; }
+        var s = document.createElement('script');
+        s.src = src;
+        s.onload = callback;
+        document.head.appendChild(s);
+    }
+
+    loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'html2canvas', function() {
+        html2canvas(container, { scale: 1.5, useCORS: true, backgroundColor: '#ffffff' }).then(function(canvas) {
+            var imgData = canvas.toDataURL('image/jpeg', 0.85);
+            
+            if (exportType === 'wa') {
+                var a = document.createElement('a');
+                a.href = imgData;
+                a.download = 'Laporan_' + custName.replace(/ /g, '_') + '.jpg';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                var phone = custPhone || '';
+                phone = phone.replace(/\D/g, ''); 
+                if (phone.startsWith('0')) phone = '62' + phone.substring(1);
+                
+                var waMsg = "Halo *" + custName + "*,\nBerikut adalah lampiran laporan/rekap transaksi Anda. Mohon konfirmasi gambar laporan yang telah kami unduhkan ya. Terima kasih! 🙏";
+                var waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(waMsg);
+                
+                setTimeout(function() { window.open(waUrl, '_blank'); }, 600);
+
+            } else if (exportType === 'pdf') {
+                loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'jspdf', function() {
+                    var jsPDF = window.jspdf.jsPDF;
+                    var pdf = new jsPDF('p', 'mm', 'a4');
+                    var pdfWidth = pdf.internal.pageSize.getWidth();
+                    var pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                    
+                    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+                    pdf.save('Laporan_' + custName.replace(/ /g, '_') + '.pdf');
+                    showToast("PDF berhasil diunduh!", "success");
+                });
+            }
+        });
+    });
 }
