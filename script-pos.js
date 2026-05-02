@@ -639,12 +639,26 @@ function submitStaffTransaction() {
             
             if (typeof sortDataByIdDesc === 'function') appData.pelanggan = sortDataByIdDesc(appData.pelanggan);
             if (typeof database !== 'undefined' && database) database.ref('appData/pelanggan').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.pelanggan) : appData.pelanggan);
+            if (typeof renderTable === 'function') renderTable('Pelanggan', true); // ZETTBOT FIX: Update tabel pelanggan secara real-time
             
             if (typeof GAS_URL !== 'undefined') {
                 fetch(GAS_URL, { 
                     method: 'POST', 
                     body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: 'Pelanggan', data: newCustSheets} }) 
-                }).catch(e => console.warn("Auto-save failed: ", e));
+                })
+                .then(res => res.json())
+                .then(resData => {
+                    if (resData && resData.success && resData.data && typeof cleanPhoneQuotes === 'function') {
+                        let serverPlg = cleanPhoneQuotes(resData.data);
+                        appData.pelanggan.forEach(localPlg => {
+                            if (!serverPlg.find(sp => String(sp.ID) === String(localPlg.ID))) serverPlg.push(localPlg);
+                        });
+                        appData.pelanggan = typeof sortDataByIdDesc === 'function' ? sortDataByIdDesc(serverPlg) : serverPlg;
+                        if (typeof database !== 'undefined' && database) database.ref('appData/pelanggan').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.pelanggan) : appData.pelanggan);
+                        if (typeof renderTable === 'function') renderTable('Pelanggan', true);
+                    }
+                })
+                .catch(e => console.warn("Auto-save failed: ", e));
             }
         }
 
@@ -791,10 +805,19 @@ function execSaveStaff(recordObj, fileData, btn, recordObjForSheets) {
         .then(function(resData) {
             if (resData && resData.success) {
                 if (resData.data && typeof mergeProduksiData === 'function') appData.produksi = mergeProduksiData(resData.data);
-                if (resData.pelanggan && typeof cleanPhoneQuotes === 'function') appData.pelanggan = cleanPhoneQuotes(resData.pelanggan);
+                
+                // ZETTBOT FIX: Smart Merge - Jangan timpa pelanggan baru dengan data "basi" dari server
+                if (resData.pelanggan && typeof cleanPhoneQuotes === 'function') {
+                    let serverPlg = cleanPhoneQuotes(resData.pelanggan);
+                    appData.pelanggan.forEach(localPlg => {
+                        if (!serverPlg.find(sp => String(sp.ID) === String(localPlg.ID))) serverPlg.push(localPlg);
+                    });
+                    appData.pelanggan = typeof sortDataByIdDesc === 'function' ? sortDataByIdDesc(serverPlg) : serverPlg;
+                }
+                
                 if (typeof database !== 'undefined' && database) database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
                 if (typeof renderStaffTable === 'function') renderStaffTable(true);
-                if (typeof renderTable === 'function') renderTable('Produksi', true);
+                if (typeof renderTable === 'function') { renderTable('Produksi', true); renderTable('Pelanggan', true); }
             }
         })
         .catch(function(e) { console.error("ZettBridge Error:", e); });
