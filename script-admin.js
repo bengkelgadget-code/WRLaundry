@@ -917,20 +917,24 @@ function renderHistoryPelanggan() {
     var txData = (appData.produksi || []).filter(function(tx) { return String(tx['ID Pelanggan']) === String(currentHistoryCustId); });
     
     var filteredTx = txData.filter(function(tx) {
-        var wktMasuk = tx['Waktu Masuk'] ? String(tx['Waktu Masuk']) : ''; 
-        var parts = wktMasuk.split(' ')[0].split('/'); 
-        if (parts.length !== 3) return false;
+        if (filterType === 'all') return true;
         
-        var txDD = parts[0].padStart(2, '0');
-        var txMM = parts[1].padStart(2, '0');
-        var txYYYY = parts[2];
+        var wktMasuk = tx['Waktu Masuk'] ? String(tx['Waktu Masuk']) : ''; 
         
         if (filterType === 'month' && filterMonth) {
             var fParts = filterMonth.split('-');
-            return (fParts[0] === txYYYY && fParts[1] === txMM);
+            if (fParts.length === 2) {
+                var formatSlash = '/' + fParts[1] + '/' + fParts[0];
+                var formatDash = '-' + fParts[1] + '-' + fParts[0];
+                return wktMasuk.includes(formatSlash) || wktMasuk.includes(formatDash) || wktMasuk.includes(filterMonth);
+            }
         } else if (filterType === 'date' && filterDate) {
             var fParts = filterDate.split('-');
-            return (fParts[0] === txYYYY && fParts[1] === txMM && fParts[2] === txDD);
+            if (fParts.length === 3) {
+                var formatSlash = fParts[2] + '/' + fParts[1] + '/' + fParts[0];
+                var formatDash = fParts[2] + '-' + fParts[1] + '-' + fParts[0];
+                return wktMasuk.includes(formatSlash) || wktMasuk.includes(formatDash) || wktMasuk.includes(filterDate);
+            }
         }
         return true; 
     });
