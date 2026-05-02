@@ -601,7 +601,6 @@ function submitStaffTransaction() {
         }
         window.isQuotaConfirmed = false; 
 
-        // ZETTBOT FIX: Pastikan tanda kutip untuk Google Sheets dikelola dengan terpisah!
         var finalHp = hp; if (finalHp.startsWith('0')) finalHp = "'" + finalHp;
 
         let idPelanggan = '';
@@ -621,7 +620,6 @@ function submitStaffTransaction() {
             });
             idPelanggan = 'PLG-' + String(maxPlg + 1).padStart(4, '0');
             
-            // Local Payload (Tanpa Kutip agar UI bersih)
             let newCustLocal = {
                 'ID': idPelanggan,
                 'Nama Pelanggan': nama,
@@ -631,7 +629,6 @@ function submitStaffTransaction() {
                 'Sisa Kuota (Kg)': 0
             };
             
-            // Sheets Payload (Dengan Kutip agar 0 tidak hilang)
             let newCustSheets = JSON.parse(JSON.stringify(newCustLocal));
             newCustSheets['No Telpon'] = finalHp;
             
@@ -639,7 +636,7 @@ function submitStaffTransaction() {
             
             if (typeof sortDataByIdDesc === 'function') appData.pelanggan = sortDataByIdDesc(appData.pelanggan);
             if (typeof database !== 'undefined' && database) database.ref('appData/pelanggan').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.pelanggan) : appData.pelanggan);
-            if (typeof renderTable === 'function') renderTable('Pelanggan', true); // ZETTBOT FIX: Update tabel pelanggan secara real-time
+            if (typeof renderTable === 'function') renderTable('Pelanggan', true);
             
             if (typeof GAS_URL !== 'undefined') {
                 fetch(GAS_URL, { 
@@ -705,13 +702,12 @@ function submitStaffTransaction() {
         let noNota = notaPrefix + String(maxNota+1).padStart(3,'0');
         let waktuMasuk = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
         
-        // ZETTBOT FIX: Local Record tanpa kutip
         var recordObj = { 
             'ID': txId,
             'Waktu Masuk': waktuMasuk,
             'ID Pelanggan': idPelanggan,
             'Nama Pelanggan': nama, 
-            'No Telpon': hp, // Polos untuk memori lokal
+            'No Telpon': hp, 
             'Layanan': detailArr.join(' + '), 
             'Status': 'Proses',
             'Total Harga': total, 
@@ -723,7 +719,6 @@ function submitStaffTransaction() {
             'Kg Terpakai': calcRes.kgTerpakai 
         };
 
-        // ZETTBOT FIX: Record untuk dikirim ke Sheets (dengan kutip)
         var recordObjForSheets = JSON.parse(JSON.stringify(recordObj));
         recordObjForSheets['No Telpon'] = finalHp;
 
@@ -739,21 +734,41 @@ function submitStaffTransaction() {
                         var canvas = document.createElement('canvas'); var width = img.width; var height = img.height; var maxSize = 800; 
                         if (width > height) { if (width > maxSize) { height = Math.round(height * (maxSize / width)); width = maxSize; } } else { if (height > maxSize) { width = Math.round(width * (maxSize / height)); height = maxSize; } }
                         canvas.width = width; canvas.height = height; var ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
-                        var compressedBase64 = canvas.toDataURL('image/jpeg', 0.7); var newFilename = file.name.replace(/\.[^/.]+$/, "") + ".jpg"; var pureBase64 = compressedBase64.split(',')[1];
-                        execSaveStaff(recordObj, { filename: newFilename, mimeType: 'image/jpeg', base64: pureBase64 }, btn, recordObjForSheets); 
+                        
+                        var compressedBase64 = canvas.toDataURL('image/jpeg', 0.7); 
+                        var pureBase64 = compressedBase64.split(',')[1];
+                        
+                        // ZETTBOT OPTIMISTIC UI: Pasang base64 langsung ke objek untuk tampilan UI Instan
+                        recordObj['Foto'] = compressedBase64;
+                        recordObjForSheets['Foto'] = compressedBase64;
+                        
+                        execSaveStaff(recordObj, pureBase64, btn, recordObjForSheets); 
                     };
-                    img.onerror = function() { var pureBase64 = e.target.result.split(',')[1]; execSaveStaff(recordObj, { filename: file.name, mimeType: file.type, base64: pureBase64 }, btn, recordObjForSheets); };
+                    img.onerror = function() { 
+                        var pureBase64 = e.target.result.split(',')[1]; 
+                        recordObj['Foto'] = e.target.result;
+                        recordObjForSheets['Foto'] = e.target.result;
+                        execSaveStaff(recordObj, pureBase64, btn, recordObjForSheets); 
+                    };
                     img.src = e.target.result;
-                } catch(err) { var pureBase64 = e.target.result.split(',')[1]; execSaveStaff(recordObj, { filename: file.name, mimeType: file.type, base64: pureBase64 }, btn, recordObjForSheets); }
+                } catch(err) { 
+                    var pureBase64 = e.target.result.split(',')[1]; 
+                    recordObj['Foto'] = e.target.result;
+                    recordObjForSheets['Foto'] = e.target.result;
+                    execSaveStaff(recordObj, pureBase64, btn, recordObjForSheets); 
+                }
             };
             reader.readAsDataURL(file);
         } else { execSaveStaff(recordObj, null, btn, recordObjForSheets); }
     } catch (error) { console.error(error); showToast("Error sistem: " + error.message, "error"); var btn = document.getElementById('btn-submit-staff'); if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; } }
 }
 
-function execSaveStaff(recordObj, fileData, btn, recordObjForSheets) {
+function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
     if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
     
+    // ===================================================================
+    // 1. OPTIMISTIC UI: Simpan Instan ke Memori Lokal & Layar Kasir
+    // ===================================================================
     var existsIdx = appData.produksi.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
     if (existsIdx >= 0) { appData.produksi[existsIdx] = recordObj; } else { appData.produksi.push(recordObj); }
 
@@ -779,48 +794,101 @@ function execSaveStaff(recordObj, fileData, btn, recordObjForSheets) {
     document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx);
     showSuccessModal();
 
-    // ZETTBOT FIX: Gunakan payload khusus Sheets agar kutip terkirim
+    // ===================================================================
+    // 2. BACKGROUND SYNC ROUTINE
+    // ===================================================================
     var payloadToBackend = recordObjForSheets || recordObj;
 
-    var isGasNative = (typeof google !== 'undefined' && 
-                       google.script && 
-                       typeof google.script.run === 'object' &&
-                       google.script.run !== null &&
-                       typeof google.script.run.withSuccessHandler === 'function' &&
-                       !window._isZettBridgePolyfill);
+    var sendToBackend = function(finalPayload, fallbackFileData) {
+        var isGasNative = (typeof google !== 'undefined' && google.script && typeof google.script.run === 'object' && google.script.run !== null && typeof google.script.run.withSuccessHandler === 'function' && !window._isZettBridgePolyfill);
 
-    if (isGasNative) {
-        google.script.run
-            .withSuccessHandler(function(res) {})
-            .withFailureHandler(function(error) {})
-            .saveTransaksiStaff(payloadToBackend, fileData);
-    } else {
-        var payload = (fileData) ? { recordObj: payloadToBackend, fileData: fileData } : { recordObj: payloadToBackend };
-        
-        fetch(typeof GAS_URL !== 'undefined' ? GAS_URL : '', {
+        if (isGasNative) {
+            google.script.run
+                .withSuccessHandler(function(res) {})
+                .withFailureHandler(function(error) {})
+                .saveTransaksiStaff(finalPayload, fallbackFileData);
+        } else {
+            var payload = fallbackFileData ? { recordObj: finalPayload, fileData: fallbackFileData } : { recordObj: finalPayload };
+            
+            fetch(typeof GAS_URL !== 'undefined' ? GAS_URL : '', {
+                method: 'POST',
+                body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload })
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(resData) {
+                if (resData && resData.success) {
+                    if (resData.data && typeof mergeProduksiData === 'function') {
+                        appData.produksi = mergeProduksiData(resData.data);
+                        let safeguardIdx = appData.produksi.findIndex(tx => String(tx.ID) === String(recordObj.ID));
+                        if (safeguardIdx >= 0) {
+                            appData.produksi[safeguardIdx] = recordObj; // Jaga URL / Foto ImgBB Kita!
+                        } else {
+                            appData.produksi.push(recordObj);
+                        }
+                        if (typeof sortDataByIdDesc === 'function') appData.produksi = sortDataByIdDesc(appData.produksi);
+                    }
+                    
+                    if (resData.pelanggan && typeof cleanPhoneQuotes === 'function') {
+                        let serverPlg = cleanPhoneQuotes(resData.pelanggan);
+                        appData.pelanggan.forEach(localPlg => {
+                            if (!serverPlg.find(sp => String(sp.ID) === String(localPlg.ID))) serverPlg.push(localPlg);
+                        });
+                        appData.pelanggan = typeof sortDataByIdDesc === 'function' ? sortDataByIdDesc(serverPlg) : serverPlg;
+                    }
+                    
+                    if (typeof database !== 'undefined' && database) database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
+                    if (typeof renderStaffTable === 'function') renderStaffTable(true);
+                    if (typeof renderTable === 'function') { renderTable('Produksi', true); renderTable('Pelanggan', true); }
+                }
+            })
+            .catch(function(e) { console.error("ZettBridge Error:", e); });
+        }
+    };
+
+    // ===================================================================
+    // 3. IMGBB API UPLOAD (JIKA ADA FOTO)
+    // ===================================================================
+    if (fileBase64) {
+        var formData = new FormData();
+        formData.append('key', '1385b0fe68f5d634ae837ec3d1e4f4a3');
+        formData.append('image', fileBase64);
+
+        fetch('https://api.imgbb.com/1/upload', {
             method: 'POST',
-            body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload })
+            body: formData
         })
-        .then(function(res) { return res.json(); })
-        .then(function(resData) {
-            if (resData && resData.success) {
-                if (resData.data && typeof mergeProduksiData === 'function') appData.produksi = mergeProduksiData(resData.data);
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                var imgUrl = result.data.url;
                 
-                // ZETTBOT FIX: Smart Merge - Jangan timpa pelanggan baru dengan data "basi" dari server
-                if (resData.pelanggan && typeof cleanPhoneQuotes === 'function') {
-                    let serverPlg = cleanPhoneQuotes(resData.pelanggan);
-                    appData.pelanggan.forEach(localPlg => {
-                        if (!serverPlg.find(sp => String(sp.ID) === String(localPlg.ID))) serverPlg.push(localPlg);
-                    });
-                    appData.pelanggan = typeof sortDataByIdDesc === 'function' ? sortDataByIdDesc(serverPlg) : serverPlg;
+                // Ganti foto base64 lokal menjadi link permanen dari ImgBB
+                recordObj['Foto'] = imgUrl;
+                payloadToBackend['Foto'] = imgUrl;
+
+                // Update kembali ke Firebase agar file base64 yang berat segera terhapus
+                let idx = appData.produksi.findIndex(tx => String(tx.ID) === String(recordObj.ID));
+                if (idx >= 0) appData.produksi[idx]['Foto'] = imgUrl;
+                if (currentSavedTx && String(currentSavedTx.ID) === String(recordObj.ID)) currentSavedTx['Foto'] = imgUrl;
+                
+                if (typeof database !== 'undefined' && database) {
+                    database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
                 }
                 
-                if (typeof database !== 'undefined' && database) database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
-                if (typeof renderStaffTable === 'function') renderStaffTable(true);
-                if (typeof renderTable === 'function') { renderTable('Produksi', true); renderTable('Pelanggan', true); }
+                // Teruskan data ke Google Sheets (Hanya berupa link string)
+                sendToBackend(payloadToBackend, null);
+            } else {
+                console.warn("ImgBB Gagal, fallback ke Google Drive");
+                sendToBackend(payloadToBackend, { filename: recordObj.ID + '.jpg', mimeType: 'image/jpeg', base64: fileBase64 });
             }
         })
-        .catch(function(e) { console.error("ZettBridge Error:", e); });
+        .catch(error => {
+            console.error('ImgBB Error:', error);
+            sendToBackend(payloadToBackend, { filename: recordObj.ID + '.jpg', mimeType: 'image/jpeg', base64: fileBase64 });
+        });
+    } else {
+        // Jika tidak ada foto, langsung lempar ke Google Sheets
+        sendToBackend(payloadToBackend, null);
     }
 }
 
@@ -1208,7 +1276,6 @@ function actionSendWA(idOverride) {
     var namaToko = typeof appSettings !== 'undefined' && appSettings.nama ? appSettings.nama : 'Waroenk Laundry';
     var txt = '';
 
-    // ZETTBOT FIX: Baca nilai dropdown status dan pembayaran DARI FORM jika modal edit sedang terbuka
     var currentStatus = tx['Status'] || 'Proses';
     var currentPmb = tx['Pembayaran'] || 'Belum Lunas';
     
@@ -1229,7 +1296,6 @@ function actionSendWA(idOverride) {
     var noNota = tx['No Nota'] || tx['ID'];
     var tglMasuk = tx['Waktu Masuk'] ? String(tx['Waktu Masuk']).split(' ')[0] : '-';
 
-    // Logika pengiriman berdasarkan status TERKINI
     if (currentStatus === 'Selesai') {
         txt = 'Hai Kak ' + cust.nama.toUpperCase() + ' laundry anda sudah selesai,\n';
         txt += 'siap untuk diambil\n';
