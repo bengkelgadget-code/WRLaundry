@@ -1,10 +1,3 @@
-/**
- * @file script-core.html
- * @description Logika utama frontend, routing sederhana, dan utilitas.
- */
-
-// ZETTBOT HYBRID ENGINE: Auto-Switch Backend & Firebase RTDB
-// ====================================================================
 const GAS_URL = "https://script.google.com/macros/s/AKfycbw4LsV2mB_x517QfNxQtA4AQmdYzyaUNPp0KCcC1F-_o-0wJtUaKYvdlqKmZcWBKq4Cyw/exec"; 
 
 const firebaseConfig = {
