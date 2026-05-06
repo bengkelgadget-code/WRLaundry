@@ -220,7 +220,7 @@ function renderTable(sheetName, keepPage) {
     var sort = sortConfig[sheetName];
     if (sort && sort.key) { 
         var safeKey = sort.key.replace(/\s+/g, ''); 
-        var iconEl = document.getElementById('icon-sort-' + sheetName + '-' + safeKey); 
+        var iconEl = document.getElementById('icon-sort-' + sheetName + '-' safeKey); 
         if (iconEl) { 
             iconEl.className = sort.dir === 'asc' ? 'ph-bold ph-caret-up text-slate-800 sort-icon-' + sheetName : 'ph-bold ph-caret-down text-slate-800 sort-icon-' + sheetName; 
         } 
@@ -239,7 +239,8 @@ function renderTable(sheetName, keepPage) {
             var text = Object.values(row).map(function(v) { return String(v).toLowerCase(); }).join(' ');
             if(sheetName === 'Produksi') { 
                 var c = resolvePelanggan(row['ID Pelanggan'], row); 
-                text += ' ' + c.nama.toLowerCase() + ' ' + c.hp.toLowerCase() + ' ' + resolveLayananNameForProduksi(row['Layanan']).toLowerCase(); 
+                // ZETTBOT FIX: Hindari error c.hp.toLowerCase is not a function dengan membungkusnya via String()
+                text += ' ' + String(c.nama || '').toLowerCase() + ' ' + String(c.hp || '').toLowerCase() + ' ' + String(resolveLayananNameForProduksi(row['Layanan']) || '').toLowerCase(); 
             }
             return text.includes(searchTerm);
         });
