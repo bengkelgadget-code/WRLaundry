@@ -692,9 +692,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     newData.pelanggan = cleanPhoneQuotes(newData.pelanggan);
                 }
                 
-                if (typeof mergeProduksiData === 'function') {
-                    newData.produksi = mergeProduksiData(newData.produksi);
-                }
+                // ZETTBOT FIX: Hapus mergeProduksiData di sini. Firebase adalah sumber kebenaran instan (Source of Truth).
+                // Jika data dihapus di Firebase, kita WAJIB menghapusnya di lokal, jangan di-merge/dibangkitkan lagi!
                 
                 ['produksi', 'pelanggan', 'waktu', 'kiloan', 'satuan', 'pewangi', 'member', 'users'].forEach(function(k) {
                     if (newData[k]) newData[k] = sortDataByIdDesc(newData[k]);
