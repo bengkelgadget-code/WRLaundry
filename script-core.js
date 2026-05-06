@@ -1,3 +1,8 @@
+/**
+ * @file script-core.html
+ * @description Logika utama frontend, routing sederhana, dan utilitas.
+ */
+
 // ZETTBOT HYBRID ENGINE: Auto-Switch Backend & Firebase RTDB
 // ====================================================================
 const GAS_URL = "https://script.google.com/macros/s/AKfycbw4LsV2mB_x517QfNxQtA4AQmdYzyaUNPp0KCcC1F-_o-0wJtUaKYvdlqKmZcWBKq4Cyw/exec"; 
@@ -112,10 +117,7 @@ if (typeof google === 'undefined') {
                     },
 
                     _fetchFromGas: function() {
-                        fetch(GAS_URL, { 
-                            method: 'POST',
-                            body: JSON.stringify({ action: 'getInitialData', payload: {} }) 
-                        })
+                        fetch(GAS_URL + "?action=getInitialData", { method: 'GET' })
                         .then(res => {
                             if (!res.ok) throw new Error("HTTP Error " + res.status);
                             return res.json();
@@ -157,7 +159,7 @@ if (typeof google === 'undefined') {
                         if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
                         if (this._onSuccess) this._onSuccess({ success: true, message: "Data Tersimpan (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
                         
-                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
+                        fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
                         .then(res => {
                             if (!res.ok) throw new Error("HTTP Error " + res.status);
                             return res.json();
@@ -185,7 +187,7 @@ if (typeof google === 'undefined') {
                         }
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Data Diupdate (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
                         
-                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'updateRecord', payload: {sheetName: sheet, id: id, data: data} }) })
+                        fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateRecord', payload: {sheetName: sheet, id: id, data: data} }) })
                         .then(res => {
                             if (!res.ok) throw new Error("HTTP Error " + res.status);
                             return res.json();
@@ -211,7 +213,7 @@ if (typeof google === 'undefined') {
                         }
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Terhapus (Instan)!", data: appData[key] });
                         
-                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteRecord', payload: {sheetName: sheet, id: id} }) })
+                        fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'deleteRecord', payload: {sheetName: sheet, id: id} }) })
                         .then(res => {
                             if (!res.ok) throw new Error("HTTP Error " + res.status);
                             return res.json();
@@ -292,7 +294,7 @@ if (typeof google === 'undefined') {
                         if (this._onSuccess) this._onSuccess({ success: true, message: "Transaksi Tersimpan Cepat!", data: appData.produksi, pelanggan: appData.pelanggan, notaInfo: rec });
                         
                         var gasPayload = { recordObj: rec, fileData: (payload.fileData || null) };
-                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'saveTransaksiStaff', payload: gasPayload }) })
+                        fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveTransaksiStaff', payload: gasPayload }) })
                         .then(res => {
                             if (!res.ok) throw new Error("HTTP Error " + res.status);
                             return res.json();
@@ -315,7 +317,7 @@ if (typeof google === 'undefined') {
                         if(database) database.ref('appData/produksi').set(sanitizeFbKeys(appData.produksi));
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Status Diperbarui!", data: appData.produksi });
                         
-                        fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'updateStatusProduksi', payload: {id: id, status: status, pmbStatus: pmbStatus} }) })
+                        fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateStatusProduksi', payload: {id: id, status: status, pmbStatus: pmbStatus} }) })
                         .then(res => {
                             if (!res.ok) throw new Error("HTTP Error " + res.status);
                             return res.json();
@@ -333,10 +335,7 @@ if (typeof google === 'undefined') {
 
                     _backgroundSyncGasToFirebase: function() {
                         setTimeout(() => {
-                            fetch(GAS_URL, { 
-                                method: 'POST', 
-                                body: JSON.stringify({ action: 'getInitialData', payload: {} }) 
-                            })
+                            fetch(GAS_URL + "?action=getInitialData", { method: 'GET' })
                             .then(res => {
                                 if (!res.ok) throw new Error("HTTP Error " + res.status);
                                 return res.json();
