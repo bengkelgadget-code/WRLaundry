@@ -38,7 +38,7 @@ function renderStaffTable(keepPage) {
 
     var listEl = document.getElementById('staff-transaction-list'); var countEl = document.getElementById('staff-total-cucian'); if(!listEl) return;
     var data = appData.produksi || []; var todayStr = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date());
-    if(countEl) { countEl.innerText = data.filter(function(d) { return String(d['Waktu Masuk']).includes(todayStr); }).length; }
+    if(countEl) { countEl.innerText = data.filter(function(d) { return d && String(d['Waktu Masuk']).includes(todayStr); }).length; }
 
     var searchInput = document.getElementById('staff-search'); var searchVal = searchInput ? (searchInput.value || '').toLowerCase() : '';
     var filterInput = document.getElementById('staff-filter-status'); var statusFilter = filterInput ? filterInput.value : '';
@@ -74,6 +74,9 @@ function renderStaffTable(keepPage) {
     });
 
     var displayData = prodCopy.filter(function(row) {
+        // ZETTBOT SAFEGUARD: Hindari error jika baris data rusak/kosong karena sinkronisasi
+        if (!row || !row['ID']) return false;
+
         var cust = resolvePelanggan(row['ID Pelanggan'], row); 
         var combined = row['No Nota'] + ' ' + cust.nama + ' ' + cust.hp + ' ' + resolveLayananNameForProduksi(row['Layanan']); combined = combined.toLowerCase();
         
