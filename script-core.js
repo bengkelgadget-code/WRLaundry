@@ -1,3 +1,10 @@
+/**
+ * @file script-core.html
+ * @description Logika utama frontend, routing sederhana, dan utilitas.
+ */
+
+// ZETTBOT HYBRID ENGINE: Auto-Switch Backend & Firebase RTDB
+// ====================================================================
 const GAS_URL = "https://script.google.com/macros/s/AKfycbw4LsV2mB_x517QfNxQtA4AQmdYzyaUNPp0KCcC1F-_o-0wJtUaKYvdlqKmZcWBKq4Cyw/exec"; 
 
 const firebaseConfig = {
@@ -149,7 +156,8 @@ if (typeof google === 'undefined') {
                         appData[key].push(data);
                         appData[key] = sortDataByIdDesc(appData[key]); 
                         
-                        if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
+                        // ZETTBOT FIX: Push full appData to ensure stable listener trigger across devices
+                        if(database) database.ref('appData').set(sanitizeFbKeys(appData));
                         if (this._onSuccess) this._onSuccess({ success: true, message: "Data Tersimpan (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
                         
                         fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
@@ -176,7 +184,8 @@ if (typeof google === 'undefined') {
                             let idx = appData[key].findIndex(x => x && String(x.ID) === String(id));
                             if(idx >= 0) { data.ID = id; appData[key][idx] = Object.assign({}, appData[key][idx], data); }
                             appData[key] = sortDataByIdDesc(appData[key]);
-                            if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
+                            // ZETTBOT FIX: Push full appData
+                            if(database) database.ref('appData').set(sanitizeFbKeys(appData));
                         }
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Data Diupdate (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
                         
@@ -202,7 +211,8 @@ if (typeof google === 'undefined') {
                         let key = sheet.toLowerCase().replace('layanan', '');
                         if (appData[key]) {
                             appData[key] = appData[key].filter(x => x && String(x.ID) !== String(id));
-                            if(database) database.ref('appData/' + key).set(sanitizeFbKeys(appData[key]));
+                            // ZETTBOT FIX: Push full appData to trigger listeners properly on other devices
+                            if(database) database.ref('appData').set(sanitizeFbKeys(appData));
                         }
                         if(this._onSuccess) this._onSuccess({ success: true, message: "Terhapus (Instan)!", data: appData[key] });
                         
@@ -703,23 +713,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (currentUser && currentUser.Role === 'ADMIN') {
                         if (typeof updateDashboard === 'function') updateDashboard();
                         
-                        var activeViews = ['produksi', 'users'];
-                        if (typeof masterConfig !== 'undefined') {
-                            for (var k in masterConfig) { 
-                                if(k !== 'Users') activeViews.push(masterConfig[k].id); 
-                            }
+                        // ZETTBOT FIX: Render semua tabel secara background, jangan hanya yang tidak hidden.
+                        // Ini memastikan jika user di HP sedang buka POS, lalu buka Admin, datanya tidak basi.
+                        if (typeof renderAllTables === 'function') {
+                            renderAllTables();
+                        } else if (typeof renderTable === 'function') {
+                            ['Produksi', 'Pelanggan', 'LayananWaktu', 'LayananKiloan', 'LayananSatuan', 'LayananPewangi', 'LayananMember', 'Users'].forEach(function(sheet) {
+                                try { renderTable(sheet, true); } catch(e) {}
+                            });
                         }
-                        
-                        activeViews.forEach(function(vid) {
-                            var el = document.getElementById('view-' + vid);
-                            if (el && !el.classList.contains('hidden') && typeof renderTable === 'function') {
-                                var sheetName = vid === 'produksi' ? 'Produksi' : (vid === 'users' ? 'Users' : null);
-                                if (!sheetName && typeof masterConfig !== 'undefined') {
-                                    for (var key in masterConfig) { if (masterConfig[key].id === vid) { sheetName = key; break; } }
-                                }
-                                if (sheetName) renderTable(sheetName, true);
-                            }
-                        });
                     }
                 }
             }
