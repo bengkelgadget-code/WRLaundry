@@ -1,10 +1,9 @@
 /**
- * @file script-core.html
- * @description Logika utama frontend, routing sederhana, dan utilitas.
+ * @file script-core.js
+ * @description ZETTBOT - SCRIPT CORE (ZettBridge Hybrid Engine)
+ * Menangani sinkronisasi state lokal, Firebase Real-time, dan Vercel/GAS
  */
 
-// ZETTBOT HYBRID ENGINE: Auto-Switch Backend & Firebase RTDB
-// ====================================================================
 const GAS_URL = "https://script.google.com/macros/s/AKfycbw4LsV2mB_x517QfNxQtA4AQmdYzyaUNPp0KCcC1F-_o-0wJtUaKYvdlqKmZcWBKq4Cyw/exec"; 
 
 const firebaseConfig = {
@@ -42,7 +41,6 @@ function cleanPhoneQuotes(arr) {
     });
 }
 
-// ZETTBOT PRO FIX: Global Centralized Sorter
 function sortDataByIdDesc(arr) {
     if (!arr || !Array.isArray(arr)) return arr;
     return arr.sort(function(a, b) {
@@ -83,293 +81,288 @@ function mergeProduksiData(newData) {
     return sortDataByIdDesc(merged);
 }
 
-if (typeof google === 'undefined') {
-    console.log("🌐 Berjalan di Vercel/Eksternal - ZettBridge Hybrid Aktif!");
-    window._isZettBridgePolyfill = true; 
-    window.google = {
-        script: {
-            get run() {
-                return {
-                    _onSuccess: null,
-                    _onFailure: null,
-                    withSuccessHandler: function(cb) { this._onSuccess = cb; return this; },
-                    withFailureHandler: function(cb) { this._onFailure = cb; return this; },
-                    
-                    getInitialData: function() {
-                        if (database) {
-                            database.ref('appData').once('value').then(snapshot => {
-                                if (snapshot.exists() && snapshot.val().produksi) {
-                                    console.log("⚡ Memuat dari Firebase Instan");
-                                    appData = restoreFbKeys(snapshot.val());
-                                    ['produksi', 'pelanggan', 'waktu', 'kiloan', 'satuan', 'pewangi', 'member', 'users'].forEach(function(k) {
-                                        if (appData[k]) appData[k] = sortDataByIdDesc(appData[k]);
-                                    });
-                                    if(this._onSuccess) this._onSuccess(appData);
-                                    this._backgroundSyncGasToFirebase();
-                                } else {
-                                    this._fetchFromGas();
-                                }
-                            }).catch(e => { this._fetchFromGas(); });
+// ZETTBOT HYBRID ENGINE: Polyfill untuk Vercel / Eksternal
+if (typeof window.google === 'undefined') {
+    window.google = {};
+}
+
+if (typeof window.google.script === 'undefined') {
+    window._isZettBridgePolyfill = true;
+    console.log("⚡ Berjalan di Vercel/Eksternal - ZettBridge Hybrid Aktif!");
+
+    window.google.script = {
+        run: {
+            withSuccessHandler: function(cb) { this._onSuccess = cb; return this; },
+            withFailureHandler: function(cb) { this._onFailure = cb; return this; },
+
+            getInitialData: function() {
+                if (typeof database !== 'undefined' && database) {
+                    database.ref('appData').once('value').then(snapshot => {
+                        if (snapshot.exists() && snapshot.val().produksi) {
+                            console.log("⚡ Memuat dari Firebase Instan");
+                            appData = typeof restoreFbKeys === 'function' ? restoreFbKeys(snapshot.val()) : snapshot.val();
+                            
+                            ['produksi', 'pelanggan', 'waktu', 'kiloan', 'satuan', 'pewangi', 'member', 'users'].forEach(function(k) {
+                                if (appData[k] && typeof sortDataByIdDesc === 'function') appData[k] = sortDataByIdDesc(appData[k]);
+                            });
+                            
+                            if(this._onSuccess) this._onSuccess(appData);
+                            this._backgroundSyncGasToFirebase(); 
                         } else {
                             this._fetchFromGas();
                         }
-                        return this;
-                    },
+                    }).catch(e => { this._fetchFromGas(); });
+                } else {
+                    this._fetchFromGas();
+                }
+                return this;
+            },
 
-                    _fetchFromGas: function() {
-                        fetch(GAS_URL + "?action=getInitialData", { method: 'GET' })
-                        .then(res => {
-                            if (!res.ok) throw new Error("HTTP Error " + res.status);
-                            return res.json();
-                        })
-                        .then(data => {
-                            if(data && data.error) throw new Error(data.message || "Proxy Error");
-                            if(data && data.produksi) { 
-                                data.produksi = mergeProduksiData(data.produksi);
-                                appData = data; 
-                                if(database) database.ref('appData').set(sanitizeFbKeys(data)); 
-                            }
-                            if(this._onSuccess) this._onSuccess(data);
-                        })
-                        .catch(err => {
-                            if(this._onFailure) this._onFailure("Koneksi gagal.");
-                        });
-                    },
-
-                    saveRecord: function(sheet, data) {
-                        let key = sheet.toLowerCase().replace('layanan', '');
-                        if (!appData[key]) appData[key] = [];
-                        
-                        let prefixMap = { 'Pelanggan': 'PLG', 'LayananWaktu': 'LWT', 'LayananKiloan': 'LKL', 'LayananSatuan': 'LST', 'LayananPewangi': 'LPW', 'LayananMember': 'LMB', 'Users': 'USR' };
-                        let prefix = prefixMap[sheet] || sheet.substring(0, 3).toUpperCase();
-                        let maxNum = 0;
-                        appData[key].forEach(r => {
-                            if (!r) return;
-                            let idStr = String(r.ID || '');
-                            if (idStr.startsWith(prefix + '-')) {
-                                let num = parseInt(idStr.split('-')[1]);
-                                if (!isNaN(num) && num > maxNum) maxNum = num;
-                            }
-                        });
-                        data['ID'] = prefix + '-' + String(maxNum + 1).padStart(4, '0');
-                        
-                        appData[key].push(data);
-                        appData[key] = sortDataByIdDesc(appData[key]); 
-                        
-                        // ZETTBOT FIX: Push full appData to ensure stable listener trigger across devices
-                        if(database) database.ref('appData').set(sanitizeFbKeys(appData));
-                        if (this._onSuccess) this._onSuccess({ success: true, message: "Data Tersimpan (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
-                        
-                        fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
-                        .then(res => {
-                            if (!res.ok) throw new Error("HTTP Error " + res.status);
-                            return res.json();
-                        }).then(resData => {
-                            if (resData.success && resData.data) {
-                                appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
-                                appData[key] = sortDataByIdDesc(appData[key]);
-                                if(resData.pelanggan) appData.pelanggan = sortDataByIdDesc(cleanPhoneQuotes(resData.pelanggan));
-                                if(database) database.ref('appData').set(sanitizeFbKeys(appData));
-                                
-                                if(typeof window.renderTable === 'function') window.renderTable(sheet, true);
-                                if(typeof window.updateAllDropdowns === 'function') window.updateAllDropdowns();
-                            }
-                        }).catch(e => { console.warn("Sync terganggu: " + e.message); });
-                        return this;
-                    },
-
-                    updateRecord: function(sheet, id, data) {
-                        let key = sheet.toLowerCase().replace('layanan', '');
-                        if (appData[key]) {
-                            let idx = appData[key].findIndex(x => x && String(x.ID) === String(id));
-                            if(idx >= 0) { data.ID = id; appData[key][idx] = Object.assign({}, appData[key][idx], data); }
-                            appData[key] = sortDataByIdDesc(appData[key]);
-                            // ZETTBOT FIX: Push full appData
-                            if(database) database.ref('appData').set(sanitizeFbKeys(appData));
+            _fetchFromGas: function() {
+                fetch(GAS_URL + "?action=getInitialData", { method: 'GET' })
+                .then(res => {
+                    if (!res.ok) throw new Error("HTTP Error " + res.status);
+                    return res.json();
+                })
+                .then(data => {
+                    if (data && data.success) {
+                        appData = data.data;
+                        if (typeof database !== 'undefined' && database) {
+                            database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
                         }
-                        if(this._onSuccess) this._onSuccess({ success: true, message: "Data Diupdate (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
-                        
-                        fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateRecord', payload: {sheetName: sheet, id: id, data: data} }) })
-                        .then(res => {
-                            if (!res.ok) throw new Error("HTTP Error " + res.status);
-                            return res.json();
-                        }).then(resData => {
-                            if (resData.success && resData.data) { 
-                                appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
-                                appData[key] = sortDataByIdDesc(appData[key]);
-                                if(resData.pelanggan) appData.pelanggan = sortDataByIdDesc(cleanPhoneQuotes(resData.pelanggan)); 
-                                if(database) database.ref('appData').set(sanitizeFbKeys(appData)); 
-                                
-                                if(typeof window.renderTable === 'function') window.renderTable(sheet, true);
-                                if(typeof window.updateAllDropdowns === 'function') window.updateAllDropdowns();
-                            }
-                        }).catch(e => { console.warn("Sync terganggu: " + e.message); });
-                        return this;
-                    },
-
-                    deleteRecord: function(sheet, id) {
-                        let key = sheet.toLowerCase().replace('layanan', '');
-                        if (appData[key]) {
-                            appData[key] = appData[key].filter(x => x && String(x.ID) !== String(id));
-                            // ZETTBOT FIX: Push full appData to trigger listeners properly on other devices
-                            if(database) database.ref('appData').set(sanitizeFbKeys(appData));
-                        }
-                        if(this._onSuccess) this._onSuccess({ success: true, message: "Terhapus (Instan)!", data: appData[key] });
-                        
-                        fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'deleteRecord', payload: {sheetName: sheet, id: id} }) })
-                        .then(res => {
-                            if (!res.ok) throw new Error("HTTP Error " + res.status);
-                            return res.json();
-                        }).then(resData => {
-                            if (resData.success && resData.data) { 
-                                appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
-                                appData[key] = sortDataByIdDesc(appData[key]);
-                                if(resData.pelanggan) appData.pelanggan = sortDataByIdDesc(cleanPhoneQuotes(resData.pelanggan)); 
-                                if(database) database.ref('appData').set(sanitizeFbKeys(appData)); 
-                                
-                                if(typeof window.renderTable === 'function') window.renderTable(sheet, true);
-                                if(typeof window.updateAllDropdowns === 'function') window.updateAllDropdowns();
-                            }
-                        }).catch(e => { console.warn("Sync terganggu: " + e.message); });
-                        return this;
-                    },
-
-                    saveTransaksiStaff: function(p1, p2) {
-                        let payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
-                        let rec = payload.recordObj || payload;
-                        
-                        if (payload.fileData && payload.fileData.base64) {
-                            if (!rec['Foto'] || rec['Foto'] === '') rec['Foto'] = 'PENDING_UPLOAD';
-                        }
-
-                        if (!rec['ID']) {
-                            let maxNum = 0;
-                            (appData.produksi || []).forEach(r => { 
-                                if (!r) return;
-                                let idStr = String(r.ID || ''); 
-                                if(idStr.startsWith('TX-')) { 
-                                    let num = parseInt(idStr.split('-')[1]); 
-                                    if(!isNaN(num) && num > maxNum) maxNum = num; 
-                                } 
-                            });
-                            rec['ID'] = 'TX-' + String(maxNum + 1).padStart(4, '0');
-                        }
-
-                        if (!rec['ID Pelanggan']) {
-                            let cust = (appData.pelanggan || []).find(p => p && p['Nama Pelanggan'] === rec['Nama Pelanggan']);
-                            if (cust) rec['ID Pelanggan'] = cust['ID'];
-                        }
-                        
-                        if (!rec['No Nota']) {
-                            let maxNota = 0; 
-                            let d = new Date(); 
-                            let day = ('0' + d.getDate()).slice(-2); 
-                            let month = ('0' + (d.getMonth() + 1)).slice(-2); 
-                            let year = String(d.getFullYear()).slice(-2); 
-                            let notaPrefix = 'WRL.' + day + month + year + '.';
-                            (appData.produksi||[]).forEach(function(row) { 
-                                if(row && row['No Nota'] && String(row['No Nota']).startsWith(notaPrefix)) { 
-                                    let parts = String(row['No Nota']).split('.'); 
-                                    if (parts.length > 2) { 
-                                        let n = parseInt(parts[2]); 
-                                        if(!isNaN(n) && n > maxNota) maxNota = n; 
-                                    } 
-                                } 
-                            });
-                            rec['No Nota'] = notaPrefix + String(maxNota+1).padStart(3,'0');
-                        }
-                        
-                        if (!rec['Status']) { rec['Status'] = 'Proses'; }
-                        if (!rec['Waktu Masuk']) { rec['Waktu Masuk'] = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date()); }
-                        
-                        if (rec['Pembayaran'] === 'Potong Kuota' && rec['Kg Terpakai']) {
-                            let cust = appData.pelanggan.find(p => p && p['Nama Pelanggan'] === rec['Nama Pelanggan']);
-                            if (cust) { let sisa = parseFloat(cust['Sisa Kuota (Kg)']) - parseFloat(rec['Kg Terpakai']); cust['Sisa Kuota (Kg)'] = sisa < 0 ? 0 : Math.round(sisa * 100) / 100; }
-                        }
-                        
-                        let exists = appData.produksi.findIndex(x => x && x.ID === rec.ID);
-                        if (exists >= 0) appData.produksi[exists] = rec; else appData.produksi.push(rec);
-                        
-                        appData.produksi = sortDataByIdDesc(appData.produksi);
-                        
-                        if(database) database.ref('appData').set(sanitizeFbKeys(appData));
-                        
-                        if (this._onSuccess) this._onSuccess({ success: true, message: "Transaksi Tersimpan Cepat!", data: appData.produksi, pelanggan: appData.pelanggan, notaInfo: rec });
-                        
-                        var gasPayload = { recordObj: rec, fileData: (payload.fileData || null) };
-                        fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveTransaksiStaff', payload: gasPayload }) })
-                        .then(res => {
-                            if (!res.ok) throw new Error("HTTP Error " + res.status);
-                            return res.json();
-                        }).then(resData => {
-                            if (resData.success) {
-                                if (resData.data) appData.produksi = mergeProduksiData(resData.data); 
-                                if (resData.pelanggan) appData.pelanggan = sortDataByIdDesc(cleanPhoneQuotes(resData.pelanggan));
-                                if(database) database.ref('appData').set(sanitizeFbKeys(appData));
-                                
-                                if (typeof window.renderStaffTable === 'function') window.renderStaffTable(true);
-                                if (typeof window.renderTable === 'function') window.renderTable('Produksi', true);
-                            }
-                        }).catch(e => console.error("GAS Sync Error", e));
-                        return this;
-                    },
-
-                    updateStatusProduksi: function(id, status, pmbStatus) {
-                        let target = appData.produksi.find(x => x && x.ID === id);
-                        if (target) { target.Status = status; target.Pembayaran = pmbStatus; if (pmbStatus === 'Lunas') target['Sisa Bayar'] = 0; }
-                        if(database) database.ref('appData/produksi').set(sanitizeFbKeys(appData.produksi));
-                        if(this._onSuccess) this._onSuccess({ success: true, message: "Status Diperbarui!", data: appData.produksi });
-                        
-                        fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateStatusProduksi', payload: {id: id, status: status, pmbStatus: pmbStatus} }) })
-                        .then(res => {
-                            if (!res.ok) throw new Error("HTTP Error " + res.status);
-                            return res.json();
-                        }).then(resData => {
-                            if (resData.success && resData.data) { 
-                                appData.produksi = mergeProduksiData(resData.data); 
-                                if(database) database.ref('appData').set(sanitizeFbKeys(appData)); 
-                                
-                                if (typeof window.renderStaffTable === 'function') window.renderStaffTable(true);
-                                if (typeof window.renderTable === 'function') window.renderTable('Produksi', true);
-                            }
-                        }).catch(e => console.error("Sync Status Terganggu: ", e.message));
-                        return this;
-                    },
-
-                    _backgroundSyncGasToFirebase: function() {
-                        setTimeout(() => {
-                            fetch(GAS_URL + "?action=getInitialData", { method: 'GET' })
-                            .then(res => {
-                                if (!res.ok) throw new Error("HTTP Error " + res.status);
-                                return res.json();
-                            })
-                            .then(data => {
-                                if(data && data.produksi && database) {
-                                    data.produksi = mergeProduksiData(data.produksi);
-                                    if (data.pelanggan && typeof cleanPhoneQuotes === 'function') {
-                                        data.pelanggan = cleanPhoneQuotes(data.pelanggan);
-                                    }
-                                    appData.pelanggan = data.pelanggan || appData.pelanggan;
-                                    appData.waktu = data.waktu || appData.waktu;
-                                    appData.kiloan = data.kiloan || appData.kiloan;
-                                    appData.satuan = data.satuan || appData.satuan;
-                                    appData.pewangi = data.pewangi || appData.pewangi;
-                                    appData.member = data.member || appData.member;
-                                    appData.users = data.users || appData.users;
-                                    appData.produksi = data.produksi;
-                                    database.ref('appData').set(sanitizeFbKeys(appData)); 
-                                }
-                            })
-                            .catch(e => console.log("ℹ️ ZettBridge Info: Sinkronisasi tertunda."));
-                        }, 5000);
+                        if (this._onSuccess) this._onSuccess(appData);
                     }
-                };
+                }).catch(err => { if (this._onFailure) this._onFailure(err); });
+            },
+
+            _backgroundSyncGasToFirebase: function() {
+                setTimeout(() => {
+                    fetch(GAS_URL + "?action=getInitialData", { method: 'GET' })
+                    .then(res => {
+                        if (!res.ok) throw new Error("HTTP Error " + res.status);
+                        return res.json();
+                    })
+                    .then(data => {
+                        if (data && data.success && typeof mergeProduksiData === 'function') {
+                            appData.produksi = mergeProduksiData(data.data.produksi);
+                            if (typeof database !== 'undefined' && database) {
+                                database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
+                            }
+                        }
+                    }).catch(e => console.warn("Background sync terganggu.", e));
+                }, 3000);
+            },
+
+            saveRecord: function(sheet, data) {
+                let key = sheet.toLowerCase().replace('layanan', '');
+                if (!appData[key]) appData[key] = [];
+                
+                let prefixMap = { 'Pelanggan': 'PLG', 'LayananWaktu': 'LWT', 'LayananKiloan': 'LKL', 'LayananSatuan': 'LST', 'LayananPewangi': 'LPW', 'LayananMember': 'LMB', 'Users': 'USR' };
+                let prefix = prefixMap[sheet] || sheet.substring(0, 3).toUpperCase();
+                let maxNum = 0;
+                appData[key].forEach(r => {
+                    if (!r) return;
+                    let idStr = String(r.ID || '');
+                    if (idStr.startsWith(prefix + '-')) {
+                        let num = parseInt(idStr.split('-')[1]);
+                        if (!isNaN(num) && num > maxNum) maxNum = num;
+                    }
+                });
+                data['ID'] = prefix + '-' + String(maxNum + 1).padStart(4, '0');
+                
+                appData[key].push(data);
+                appData[key] = sortDataByIdDesc(appData[key]); 
+                
+                if(database) database.ref('appData').set(sanitizeFbKeys(appData));
+                if (this._onSuccess) this._onSuccess({ success: true, message: "Data Tersimpan (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
+                
+                fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: sheet, data: data} }) })
+                .then(res => {
+                    if (!res.ok) throw new Error("HTTP Error " + res.status);
+                    return res.json();
+                }).then(resData => {
+                    if (resData.success && resData.data) {
+                        appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
+                        appData[key] = sortDataByIdDesc(appData[key]);
+                        if(resData.pelanggan) appData.pelanggan = sortDataByIdDesc(cleanPhoneQuotes(resData.pelanggan));
+                        if(database) database.ref('appData').set(sanitizeFbKeys(appData));
+                        
+                        if(typeof window.renderTable === 'function') window.renderTable(sheet, true);
+                        if(typeof window.updateAllDropdowns === 'function') window.updateAllDropdowns();
+                    }
+                }).catch(e => { console.warn("Sync terganggu: " + e.message); });
+                return this;
+            },
+
+            updateRecord: function(sheet, id, data) {
+                let key = sheet.toLowerCase().replace('layanan', '');
+                if (appData[key]) {
+                    let idx = appData[key].findIndex(x => x && String(x.ID) === String(id));
+                    if(idx >= 0) { data.ID = id; appData[key][idx] = Object.assign({}, appData[key][idx], data); }
+                    appData[key] = sortDataByIdDesc(appData[key]);
+                    if(database) database.ref('appData').set(sanitizeFbKeys(appData));
+                }
+                if(this._onSuccess) this._onSuccess({ success: true, message: "Data Diupdate (Instan)!", data: appData[key], pelanggan: appData.pelanggan });
+                
+                fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateRecord', payload: {sheetName: sheet, id: id, data: data} }) })
+                .then(res => {
+                    if (!res.ok) throw new Error("HTTP Error " + res.status);
+                    return res.json();
+                }).then(resData => {
+                    if (resData.success && resData.data) { 
+                        appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
+                        appData[key] = sortDataByIdDesc(appData[key]);
+                        if(resData.pelanggan) appData.pelanggan = sortDataByIdDesc(cleanPhoneQuotes(resData.pelanggan)); 
+                        if(database) database.ref('appData').set(sanitizeFbKeys(appData)); 
+                        
+                        if(typeof window.renderTable === 'function') window.renderTable(sheet, true);
+                        if(typeof window.updateAllDropdowns === 'function') window.updateAllDropdowns();
+                    }
+                }).catch(e => { console.warn("Sync terganggu: " + e.message); });
+                return this;
+            },
+
+            deleteRecord: function(sheet, id) {
+                var key = sheet.toLowerCase().replace('layanan', '');
+                
+                if (appData[key]) {
+                    appData[key] = appData[key].filter(function(item) { return String(item.ID) !== String(id); });
+                    if (typeof database !== 'undefined' && database) {
+                        database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
+                    }
+                }
+                
+                if(this._onSuccess) this._onSuccess({ success: true, message: "Terhapus (Instan)!", data: appData[key] });
+                
+                fetch(GAS_URL, { 
+                    method: 'POST', 
+                    redirect: 'follow', 
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+                    body: JSON.stringify({ action: 'deleteRecord', payload: {sheetName: sheet, id: id} }) 
+                })
+                .then(res => {
+                    if (!res.ok) throw new Error("HTTP Error " + res.status);
+                    return res.json();
+                }).then(resData => {
+                    if (resData.success && resData.data) { 
+                        appData[key] = (sheet === 'Pelanggan') ? cleanPhoneQuotes(resData.data) : resData.data; 
+                        appData[key] = sortDataByIdDesc(appData[key]);
+                        if(resData.pelanggan) appData.pelanggan = sortDataByIdDesc(cleanPhoneQuotes(resData.pelanggan)); 
+                        if(database) database.ref('appData').set(sanitizeFbKeys(appData)); 
+                        
+                        if(typeof window.renderTable === 'function') window.renderTable(sheet, true);
+                        if(typeof window.updateAllDropdowns === 'function') window.updateAllDropdowns();
+                    }
+                }).catch(e => { console.warn("Sync terganggu: " + e.message); });
+                return this;
+            },
+
+            saveTransaksiStaff: function(p1, p2) {
+                let payload = (p2 !== undefined) ? { recordObj: p1, fileData: p2 } : p1;
+                let rec = payload.recordObj || payload;
+                
+                if (payload.fileData && payload.fileData.base64) {
+                    if (!rec['Foto'] || rec['Foto'] === '') rec['Foto'] = 'PENDING_UPLOAD';
+                }
+
+                if (!rec['ID']) {
+                    let maxNum = 0;
+                    (appData.produksi || []).forEach(r => { 
+                        if (!r) return;
+                        let idStr = String(r.ID || ''); 
+                        if(idStr.startsWith('TX-')) { 
+                            let num = parseInt(idStr.split('-')[1]); 
+                            if(!isNaN(num) && num > maxNum) maxNum = num; 
+                        } 
+                    });
+                    rec['ID'] = 'TX-' + String(maxNum + 1).padStart(4, '0');
+                }
+
+                if (!rec['ID Pelanggan']) {
+                    let cust = (appData.pelanggan || []).find(p => p && p['Nama Pelanggan'] === rec['Nama Pelanggan']);
+                    if (cust) rec['ID Pelanggan'] = cust['ID'];
+                }
+                
+                if (!rec['No Nota']) {
+                    let maxNota = 0; 
+                    let d = new Date(); 
+                    let day = ('0' + d.getDate()).slice(-2); 
+                    let month = ('0' + (d.getMonth() + 1)).slice(-2); 
+                    let year = String(d.getFullYear()).slice(-2); 
+                    let notaPrefix = 'WRL.' + day + month + year + '.';
+                    (appData.produksi||[]).forEach(function(row) { 
+                        if(row && row['No Nota'] && String(row['No Nota']).startsWith(notaPrefix)) { 
+                            let parts = String(row['No Nota']).split('.'); 
+                            if (parts.length > 2) { 
+                                let n = parseInt(parts[2]); 
+                                if(!isNaN(n) && n > maxNota) maxNota = n; 
+                            } 
+                        } 
+                    });
+                    rec['No Nota'] = notaPrefix + String(maxNota+1).padStart(3,'0');
+                }
+                
+                if (!rec['Status']) { rec['Status'] = 'Proses'; }
+                if (!rec['Waktu Masuk']) { rec['Waktu Masuk'] = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date()); }
+                
+                if (rec['Pembayaran'] === 'Potong Kuota' && rec['Kg Terpakai']) {
+                    let cust = appData.pelanggan.find(p => p && p['Nama Pelanggan'] === rec['Nama Pelanggan']);
+                    if (cust) { let sisa = parseFloat(cust['Sisa Kuota (Kg)']) - parseFloat(rec['Kg Terpakai']); cust['Sisa Kuota (Kg)'] = sisa < 0 ? 0 : Math.round(sisa * 100) / 100; }
+                }
+                
+                let exists = appData.produksi.findIndex(x => x && x.ID === rec.ID);
+                if (exists >= 0) appData.produksi[exists] = rec; else appData.produksi.push(rec);
+                
+                appData.produksi = sortDataByIdDesc(appData.produksi);
+                
+                if(database) database.ref('appData').set(sanitizeFbKeys(appData));
+                
+                if (this._onSuccess) this._onSuccess({ success: true, message: "Transaksi Tersimpan Cepat!", data: appData.produksi, pelanggan: appData.pelanggan, notaInfo: rec });
+                
+                var gasPayload = { recordObj: rec, fileData: (payload.fileData || null) };
+                fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveTransaksiStaff', payload: gasPayload }) })
+                .then(res => {
+                    if (!res.ok) throw new Error("HTTP Error " + res.status);
+                    return res.json();
+                }).then(resData => {
+                    if (resData.success) {
+                        if (resData.data) appData.produksi = mergeProduksiData(resData.data); 
+                        if (resData.pelanggan) appData.pelanggan = sortDataByIdDesc(cleanPhoneQuotes(resData.pelanggan));
+                        if(database) database.ref('appData').set(sanitizeFbKeys(appData));
+                        
+                        if (typeof window.renderStaffTable === 'function') window.renderStaffTable(true);
+                        if (typeof window.renderTable === 'function') window.renderTable('Produksi', true);
+                    }
+                }).catch(e => console.error("GAS Sync Error", e));
+                return this;
+            },
+
+            updateStatusProduksi: function(id, status, pmbStatus) {
+                let target = appData.produksi.find(x => x && x.ID === id);
+                if (target) { target.Status = status; target.Pembayaran = pmbStatus; if (pmbStatus === 'Lunas') target['Sisa Bayar'] = 0; }
+                if(database) database.ref('appData/produksi').set(sanitizeFbKeys(appData.produksi));
+                if(this._onSuccess) this._onSuccess({ success: true, message: "Status Diperbarui!", data: appData.produksi });
+                
+                fetch(GAS_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'updateStatusProduksi', payload: {id: id, status: status, pmbStatus: pmbStatus} }) })
+                .then(res => {
+                    if (!res.ok) throw new Error("HTTP Error " + res.status);
+                    return res.json();
+                }).then(resData => {
+                    if (resData.success && resData.data) { 
+                        appData.produksi = mergeProduksiData(resData.data); 
+                        if(database) database.ref('appData').set(sanitizeFbKeys(appData)); 
+                        
+                        if (typeof window.renderStaffTable === 'function') window.renderStaffTable(true);
+                        if (typeof window.renderTable === 'function') window.renderTable('Produksi', true);
+                    }
+                }).catch(e => console.error("Sync Status Terganggu: ", e.message));
+                return this;
             }
         }
     };
 }
-// ====================================================================
 
+// GLOBAL VARIABLES
 var appData = { produksi: [], pelanggan: [], waktu: [], kiloan: [], satuan: [], pewangi: [], member: [], users: [] };
 var tsInstances = {};
 var isLoggedIn = false;
@@ -399,6 +392,7 @@ var masterConfig = {
     'Users': { id: 'users', title: 'Manajemen User', fields: [{name: 'Username', type: 'text'}, {name: 'Nama Lengkap', type: 'text'}, {name: 'Password', type: 'password'}, {name: 'Role', type: 'select', options: ['ADMIN', 'STAFF']}] }
 };
 
+// UTILITY FUNCTIONS
 function resolvePelanggan(id, fallbackData) {
     var cust = (appData.pelanggan || []).find(function(c) { return c && String(c['ID']) === String(id); });
     if (cust) return { nama: cust['Nama Pelanggan'], hp: cust['No Telpon'] };
@@ -646,6 +640,7 @@ function saveSettings() {
     localStorage.setItem('zettSettings', JSON.stringify(appSettings)); closeModal('modal-settings'); applySettings(); showToast('Pengaturan berhasil disimpan!');
 }
 
+// INITIALIZATION & FIREBASE LISTENER
 document.addEventListener('DOMContentLoaded', function() {
     applySettings(); 
     
@@ -713,8 +708,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (currentUser && currentUser.Role === 'ADMIN') {
                         if (typeof updateDashboard === 'function') updateDashboard();
                         
-                        // ZETTBOT FIX: Render semua tabel secara background, jangan hanya yang tidak hidden.
-                        // Ini memastikan jika user di HP sedang buka POS, lalu buka Admin, datanya tidak basi.
                         if (typeof renderAllTables === 'function') {
                             renderAllTables();
                         } else if (typeof renderTable === 'function') {
@@ -937,12 +930,10 @@ document.addEventListener('input', e => {
 var startY = 0;
 document.addEventListener('touchstart', e => { if(window.scrollY < 10) startY = e.touches[0].pageY; });
 document.addEventListener('touchend', e => {
-    // Cek apakah modal/form kasir sedang terbuka
     var modalStaff = document.getElementById('modal-staff-tx');
     var isModalOpen = modalStaff && !modalStaff.classList.contains('hidden');
 
     if(window.scrollY < 10 && e.changedTouches[0].pageY - startY > 150) {
-        // Jika form kasir terbuka, hentikan fungsi refresh
         if (isModalOpen) return; 
         
         showToast("Menyegarkan data...");
