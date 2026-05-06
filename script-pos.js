@@ -839,40 +839,11 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
     };
 
     if (fileBase64) {
-        var formData = new FormData();
-        formData.append('key', '1385b0fe68f5d634ae837ec3d1e4f4a3');
-        formData.append('image', fileBase64);
-
-        fetch('https://api.imgbb.com/1/upload', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(result => {
-            if (result.success) {
-                var imgUrl = result.data.url;
-                
-                recordObj['Foto'] = imgUrl;
-                payloadToBackend['Foto'] = imgUrl;
-
-                let idx = appData.produksi.findIndex(tx => String(tx.ID) === String(recordObj.ID));
-                if (idx >= 0) appData.produksi[idx]['Foto'] = imgUrl;
-                if (currentSavedTx && String(currentSavedTx.ID) === String(recordObj.ID)) currentSavedTx['Foto'] = imgUrl;
-                
-                if (typeof database !== 'undefined' && database) {
-                    database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
-                }
-                
-                sendToBackend(payloadToBackend, null);
-            } else {
-                console.warn("ImgBB Gagal, fallback ke Google Drive");
-                sendToBackend(payloadToBackend, { filename: recordObj.ID + '.jpg', mimeType: 'image/jpeg', base64: fileBase64 });
-            }
-        })
-        .catch(error => {
-            console.error('ImgBB Error:', error);
-            sendToBackend(payloadToBackend, { filename: recordObj.ID + '.jpg', mimeType: 'image/jpeg', base64: fileBase64 });
-        });
+        // ZETTBOT FIX: Bypass ImgBB karena issue SSL di browser client (ERR_SSL_VERSION_OR_CIPHER_MISMATCH)
+        // Frontend akan menggunakan Base64 sementara agar gambar langsung muncul (Instan).
+        // Background sync akan mengirim Base64 ke Google Drive via Apps Script.
+        console.log("ZettBOT: Memproses foto langsung ke Google Drive Backend...");
+        sendToBackend(payloadToBackend, { filename: recordObj.ID + '.jpg', mimeType: 'image/jpeg', base64: fileBase64 });
     } else {
         sendToBackend(payloadToBackend, null);
     }
