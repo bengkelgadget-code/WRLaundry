@@ -644,6 +644,12 @@ function saveSettings() {
 document.addEventListener('DOMContentLoaded', function() {
     applySettings(); 
     
+    // ZETTBOT FIX: Set default filter transaksi Kasir ke 'Proses' saat aplikasi pertama kali dimuat
+    var staffFilterStatus = document.getElementById('staff-filter-status');
+    if (staffFilterStatus) {
+        staffFilterStatus.value = 'Proses';
+    }
+    
     if (typeof generateDynamicViews === 'function') {
         generateDynamicViews(); 
     } else {
