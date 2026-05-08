@@ -74,7 +74,6 @@ function renderStaffTable(keepPage) {
     });
 
     var displayData = prodCopy.filter(function(row) {
-        // ZETTBOT SAFEGUARD: Hindari error jika baris data rusak/kosong karena sinkronisasi
         if (!row || !row['ID']) return false;
 
         var cust = resolvePelanggan(row['ID Pelanggan'], row); 
@@ -361,6 +360,11 @@ function openStaffModal() {
                 if (t === 'file') {
                     var clone = el.cloneNode(false);
                     el.parentNode.replaceChild(clone, el);
+                    
+                    // ZETTBOT FIX: Menghapus atribut 'capture' agar browser HP otomatis memberikan opsi "Kamera" ATAU "Galeri/File"
+                    clone.removeAttribute('capture');
+                    clone.setAttribute('accept', 'image/*');
+                    
                     clone.addEventListener('change', function() { previewFileName(clone); });
                 } else if (t === 'checkbox' || t === 'radio') {
                     el.checked = false;
@@ -842,10 +846,6 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
     };
 
     if (fileBase64) {
-        // ZETTBOT FIX: Bypass ImgBB karena issue SSL di browser client (ERR_SSL_VERSION_OR_CIPHER_MISMATCH)
-        // Frontend akan menggunakan Base64 sementara agar gambar langsung muncul (Instan).
-        // Background sync akan mengirim Base64 ke Google Drive via Apps Script.
-        console.log("ZettBOT: Memproses foto langsung ke Google Drive Backend...");
         sendToBackend(payloadToBackend, { filename: recordObj.ID + '.jpg', mimeType: 'image/jpeg', base64: fileBase64 });
     } else {
         sendToBackend(payloadToBackend, null);
