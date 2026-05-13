@@ -340,7 +340,7 @@ function attachPaymentScroll(inputId) {
 }
 
 // ZETTBOT FIX: Reset flag Edit State setiap kali modal Tambah dibuka murni
-function openStaffModal() {
+function openStaffModal(isEditMode) {
     window.currentEditTxId = null;
     window.originalWaktuMasuk = null;
     window.originalStatusTx = null;
@@ -408,7 +408,12 @@ function openStaffModal() {
 
     try { initCustomerAutocomplete(); } catch(e) {}
     document.getElementById('staff-services-container').innerHTML = ''; staffServicesCount = 0; staffServicesData = {};
-    addStaffServiceRow(false); validateStaffForm(); setTimeout(function() { if(tsInstances['staff-input-nama']) { tsInstances['staff-input-nama'].focus(); } }, 300);
+    addStaffServiceRow(false); validateStaffForm(); 
+    
+    // ZETTBOT FIX: Matikan autofocus jika sedang dalam mode Edit agar nama tidak otomatis berubah (mencegah Bug ILMI)
+    if (!isEditMode) {
+        setTimeout(function() { if(tsInstances['staff-input-nama']) { tsInstances['staff-input-nama'].focus(); } }, 300);
+    }
 }
 
 // ZETTBOT FEATURE: Edit Full Transaksi dari Modal Kasir
@@ -416,7 +421,8 @@ window.editFullTransactionStaff = function(id) {
     var tx = appData.produksi.find(function(x) { return String(x.ID) === String(id); });
     if(!tx) { showToast("Data transaksi gagal dimuat", "error"); return; }
     
-    openStaffModal(); // Reset form dasar
+    // ZETTBOT FIX: Mengirim parameter true menandakan ini adalah Mode Edit
+    openStaffModal(true); 
     
     setTimeout(function() {
         // Aktifkan State Edit
@@ -439,12 +445,14 @@ window.editFullTransactionStaff = function(id) {
         var cust = resolvePelanggan(tx['ID Pelanggan'], tx);
         if(tsInstances['staff-input-nama']) {
             tsInstances['staff-input-nama'].enable();
+            tsInstances['staff-input-nama'].clear(true); // ZETTBOT FIX: Bersihkan cache input lama
             tsInstances['staff-input-nama'].addOption({id: tx['ID Pelanggan'], nama: cust.nama, hp: cust.hp});
             tsInstances['staff-input-nama'].setValue(cust.nama);
             tsInstances['staff-input-nama'].disable();
         }
         if(tsInstances['staff-input-hp']) {
             tsInstances['staff-input-hp'].enable();
+            tsInstances['staff-input-hp'].clear(true); // ZETTBOT FIX: Bersihkan cache input lama
             tsInstances['staff-input-hp'].addOption({id: tx['ID Pelanggan'], nama: cust.nama, hp: cust.hp});
             tsInstances['staff-input-hp'].setValue(cust.hp);
             tsInstances['staff-input-hp'].disable();
@@ -690,7 +698,6 @@ function validateStaffForm() {
     }
 }
 
-// ZETTBOT FIX: Logika Submit yang mendukung Edit/Update Mode
 function submitStaffTransaction() {
     try {
         var inputNama = tsInstances['staff-input-nama']; var inputHp = tsInstances['staff-input-hp'];
@@ -755,6 +762,17 @@ function submitStaffTransaction() {
                     body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: 'Pelanggan', data: newCustSheets} }) 
                 })
                 .then(res => res.json())
+                .then(resData => {
+                    if (resData && resData.success && resData.data && typeof cleanPhoneQuotes === 'function') {
+                        let serverPlg = cleanPhoneQuotes(resData.data);
+                        appData.pelanggan.forEach(localPlg => {
+                            if (!serverPlg.find(sp => String(sp.ID) === String(localPlg.ID))) serverPlg.push(localPlg);
+                        });
+                        appData.pelanggan = typeof sortDataByIdDesc === 'function' ? sortDataByIdDesc(serverPlg) : serverPlg;
+                        if (typeof database !== 'undefined' && database) database.ref('appData/pelanggan').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.pelanggan) : appData.pelanggan);
+                        if (typeof renderTable === 'function') renderTable('Pelanggan', true);
+                    }
+                })
                 .catch(e => console.warn("Auto-save failed: ", e));
             }
         }
@@ -882,7 +900,6 @@ function submitStaffTransaction() {
     } catch (error) { console.error(error); showToast("Error sistem: " + error.message, "error"); var btn = document.getElementById('btn-submit-staff'); if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; } }
 }
 
-// ZETTBOT FIX: Mencegah Kuota Ganda Saat Update Data
 function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
     if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
     
@@ -943,6 +960,32 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
                 body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload })
             })
             .then(function(res) { return res.json(); })
+            .then(function(resData) {
+                if (resData && resData.success) {
+                    if (resData.data && typeof mergeProduksiData === 'function') {
+                        appData.produksi = mergeProduksiData(resData.data);
+                        let safeguardIdx = appData.produksi.findIndex(tx => String(tx.ID) === String(recordObj.ID));
+                        if (safeguardIdx >= 0) {
+                            appData.produksi[safeguardIdx] = recordObj; 
+                        } else {
+                            appData.produksi.push(recordObj);
+                        }
+                        if (typeof sortDataByIdDesc === 'function') appData.produksi = sortDataByIdDesc(appData.produksi);
+                    }
+                    
+                    if (resData.pelanggan && typeof cleanPhoneQuotes === 'function') {
+                        let serverPlg = cleanPhoneQuotes(resData.pelanggan);
+                        appData.pelanggan.forEach(localPlg => {
+                            if (!serverPlg.find(sp => String(sp.ID) === String(localPlg.ID))) serverPlg.push(localPlg);
+                        });
+                        appData.pelanggan = typeof sortDataByIdDesc === 'function' ? sortDataByIdDesc(serverPlg) : serverPlg;
+                    }
+                    
+                    if (typeof database !== 'undefined' && database) database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
+                    if (typeof renderStaffTable === 'function') renderStaffTable(true);
+                    if (typeof renderTable === 'function') { renderTable('Produksi', true); renderTable('Pelanggan', true); }
+                }
+            })
             .catch(function(e) { console.error("ZettBridge Error:", e); });
         }
     };
@@ -955,7 +998,6 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
     }
 }
 
-// ZETTBOT FIX: Suntikkan Tombol 'Ubah Rincian' ke dalam Modal Preview Struk
 function openTxDetail(id) {
     var px = appData.produksi.find(function(x) { return x && String(x['ID']) === String(id); }); if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
     currentDetailId = id; var cust = resolvePelanggan(px['ID Pelanggan'], px); currentSavedTx = {...px, 'Nama Pelanggan': cust.nama, 'No Telpon': cust.hp};
