@@ -339,9 +339,17 @@ function attachPaymentScroll(inputId) {
     }
 }
 
+// ZETTBOT FIX: Reset flag Edit State setiap kali modal Tambah dibuka murni
 function openStaffModal() {
+    window.currentEditTxId = null;
+    window.originalWaktuMasuk = null;
+    window.originalStatusTx = null;
+
     var modal = document.getElementById('modal-staff-tx'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
     
+    var titleEl = document.querySelector('#modal-staff-tx h3');
+    if(titleEl) titleEl.innerText = 'Tambah Transaksi';
+
     var footer = document.getElementById('staff-footer-action');
     var form = document.getElementById('form-staff-tx');
     if (footer && form && footer.parentNode !== form) {
@@ -360,11 +368,8 @@ function openStaffModal() {
                 if (t === 'file') {
                     var clone = el.cloneNode(false);
                     el.parentNode.replaceChild(clone, el);
-                    
-                    // ZETTBOT FIX: Menghapus atribut 'capture' agar browser HP otomatis memberikan opsi "Kamera" ATAU "Galeri/File"
                     clone.removeAttribute('capture');
                     clone.setAttribute('accept', 'image/*');
-                    
                     clone.addEventListener('change', function() { previewFileName(clone); });
                 } else if (t === 'checkbox' || t === 'radio') {
                     el.checked = false;
@@ -376,6 +381,13 @@ function openStaffModal() {
             } catch(e) {}
         });
     }
+
+    var notaInput = document.getElementById('staff-input-nota'); 
+    if(notaInput) { notaInput.disabled = false; notaInput.classList.remove('bg-slate-100'); }
+
+    if(tsInstances['staff-input-nama']) { tsInstances['staff-input-nama'].enable(); }
+    if(tsInstances['staff-input-hp']) { tsInstances['staff-input-hp'].enable(); }
+
     document.getElementById('staff-foto-label').innerHTML = '<i class="ph-bold ph-camera text-3xl"></i>'; 
     document.getElementById('staff-total-biaya-label').innerText = 'Total Biaya'; 
     document.getElementById('staff-total-biaya').innerText = 'Rp 0';
@@ -388,7 +400,7 @@ function openStaffModal() {
     var memberInfo = document.getElementById('staff-member-info'); if (memberInfo) { memberInfo.classList.add('hidden'); memberInfo.classList.remove('flex'); }
     var maxNum = 0; var d = new Date(); var day = ('0' + d.getDate()).slice(-2); var month = ('0' + (d.getMonth() + 1)).slice(-2); var year = String(d.getFullYear()).slice(-2); var prefix = 'WRL.' + day + month + year + '.';
     (appData.produksi||[]).forEach(function(row) { if(row['No Nota'] && row['No Nota'].startsWith(prefix)) { var parts = row['No Nota'].split('.'); if (parts.length > 2) { var n = parseInt(parts[2]); if(!isNaN(n) && n > maxNum) maxNum = n; } } });
-    var notaInput = document.getElementById('staff-input-nota'); if (notaInput) { notaInput.value = prefix + String(maxNum+1).padStart(3,'0'); }
+    if (notaInput) { notaInput.value = prefix + String(maxNum+1).padStart(3,'0'); }
     
     attachPaymentScroll('staff-input-diskon');
     attachPaymentScroll('staff-input-pembayaran');
@@ -398,6 +410,97 @@ function openStaffModal() {
     document.getElementById('staff-services-container').innerHTML = ''; staffServicesCount = 0; staffServicesData = {};
     addStaffServiceRow(false); validateStaffForm(); setTimeout(function() { if(tsInstances['staff-input-nama']) { tsInstances['staff-input-nama'].focus(); } }, 300);
 }
+
+// ZETTBOT FEATURE: Edit Full Transaksi dari Modal Kasir
+window.editFullTransactionStaff = function(id) {
+    var tx = appData.produksi.find(function(x) { return String(x.ID) === String(id); });
+    if(!tx) { showToast("Data transaksi gagal dimuat", "error"); return; }
+    
+    openStaffModal(); // Reset form dasar
+    
+    setTimeout(function() {
+        // Aktifkan State Edit
+        window.currentEditTxId = id;
+        window.originalWaktuMasuk = tx['Waktu Masuk'];
+        window.originalStatusTx = tx['Status'];
+        
+        var titleEl = document.querySelector('#modal-staff-tx h3');
+        if(titleEl) titleEl.innerText = 'Edit Rincian Transaksi';
+        
+        // 1. Matikan Field Nota
+        var notaInput = document.getElementById('staff-input-nota');
+        if(notaInput) { 
+            notaInput.value = tx['No Nota'] || tx['ID']; 
+            notaInput.disabled = true; 
+            notaInput.classList.add('bg-slate-100'); 
+        }
+        
+        // 2 & 3. Set dan Matikan Field Nama & HP Pelanggan
+        var cust = resolvePelanggan(tx['ID Pelanggan'], tx);
+        if(tsInstances['staff-input-nama']) {
+            tsInstances['staff-input-nama'].enable();
+            tsInstances['staff-input-nama'].addOption({id: tx['ID Pelanggan'], nama: cust.nama, hp: cust.hp});
+            tsInstances['staff-input-nama'].setValue(cust.nama);
+            tsInstances['staff-input-nama'].disable();
+        }
+        if(tsInstances['staff-input-hp']) {
+            tsInstances['staff-input-hp'].enable();
+            tsInstances['staff-input-hp'].addOption({id: tx['ID Pelanggan'], nama: cust.nama, hp: cust.hp});
+            tsInstances['staff-input-hp'].setValue(cust.hp);
+            tsInstances['staff-input-hp'].disable();
+        }
+        
+        // Kosongkan baris default
+        document.getElementById('staff-services-container').innerHTML = '';
+        staffServicesCount = 0;
+        staffServicesData = {};
+        
+        var diskonTx = 0;
+        try {
+            var parsed = JSON.parse(tx['Detail Layanan JSON'] || '{}');
+            var items = Array.isArray(parsed) ? parsed : (parsed.items || []);
+            diskonTx = parsed.diskon || 0;
+            
+            // Loop & Render Layanan Lama
+            items.forEach(function(item) {
+                addStaffServiceRow(false);
+                var rowId = staffServicesCount;
+                
+                var matchedKiloan = appData.kiloan.find(function(k) { return k['Nama Layanan'] === item.nama; });
+                var matchedSatuan = appData.satuan.find(function(s) { return s['Nama Layanan'] === item.nama; });
+                var targetVal = '';
+                if(matchedKiloan) targetVal = 'K-' + matchedKiloan['ID'];
+                else if(matchedSatuan) targetVal = 'S-' + matchedSatuan['ID'];
+                
+                if(targetVal && tsInstances['staff-srv-select-' + rowId]) {
+                    tsInstances['staff-srv-select-' + rowId].setValue(targetVal);
+                    var qtyEl = document.getElementById('staff-srv-qty-' + rowId);
+                    if(qtyEl) { qtyEl.value = item.qty; calcStaffServiceRow(rowId); }
+                }
+            });
+        } catch(e) { console.error(e); }
+        
+        // Set Diskon
+        var diskonInput = document.getElementById('staff-input-diskon');
+        if(diskonInput && diskonTx > 0) { diskonInput.value = new Intl.NumberFormat('id-ID').format(diskonTx); }
+        
+        // Set Pembayaran
+        var pmbInput = document.getElementById('staff-input-pembayaran');
+        if(pmbInput) {
+            var pmbStatus = tx['Pembayaran'];
+            if (pmbStatus === 'Potong Kuota') togglePotongKuotaOption(true, false);
+            pmbInput.value = pmbStatus;
+            handlePembayaranChange();
+            
+            if(pmbStatus === 'DP') {
+                var dpInput = document.getElementById('staff-input-dp');
+                if(dpInput && tx['DP']) dpInput.value = new Intl.NumberFormat('id-ID').format(tx['DP']);
+            }
+        }
+        
+        calcStaffTotalAll();
+    }, 300);
+};
 
 function handlePembayaranChange() {
     var val = document.getElementById('staff-input-pembayaran').value; var dpContainer = document.getElementById('staff-dp-container');
@@ -587,6 +690,7 @@ function validateStaffForm() {
     }
 }
 
+// ZETTBOT FIX: Logika Submit yang mendukung Edit/Update Mode
 function submitStaffTransaction() {
     try {
         var inputNama = tsInstances['staff-input-nama']; var inputHp = tsInstances['staff-input-hp'];
@@ -651,17 +755,6 @@ function submitStaffTransaction() {
                     body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: 'Pelanggan', data: newCustSheets} }) 
                 })
                 .then(res => res.json())
-                .then(resData => {
-                    if (resData && resData.success && resData.data && typeof cleanPhoneQuotes === 'function') {
-                        let serverPlg = cleanPhoneQuotes(resData.data);
-                        appData.pelanggan.forEach(localPlg => {
-                            if (!serverPlg.find(sp => String(sp.ID) === String(localPlg.ID))) serverPlg.push(localPlg);
-                        });
-                        appData.pelanggan = typeof sortDataByIdDesc === 'function' ? sortDataByIdDesc(serverPlg) : serverPlg;
-                        if (typeof database !== 'undefined' && database) database.ref('appData/pelanggan').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.pelanggan) : appData.pelanggan);
-                        if (typeof renderTable === 'function') renderTable('Pelanggan', true);
-                    }
-                })
                 .catch(e => console.warn("Auto-save failed: ", e));
             }
         }
@@ -680,35 +773,55 @@ function submitStaffTransaction() {
         
         var finalJSON = { items: detailJSON, subtotal: calcRes.subtotalAll, diskon: calcRes.diskon, potonganMember: calcRes.potonganMember, kgTerpakai: calcRes.kgTerpakai };
         
-        let maxNum = 0;
-        (appData.produksi || []).forEach(r => { 
-            if (!r) return;
-            let idStr = String(r.ID || ''); 
-            if(idStr.startsWith('TX-')) { 
-                let num = parseInt(idStr.split('-')[1]); 
-                if(!isNaN(num) && num > maxNum) maxNum = num; 
-            } 
-        });
-        let txId = 'TX-' + String(maxNum + 1).padStart(4, '0');
+        let txId = '';
+        let noNota = '';
+        let waktuMasuk = '';
+        let finalStatus = 'Proses';
 
-        let maxNota = 0; 
-        let dDate = new Date(); 
-        let dayStr = ('0' + dDate.getDate()).slice(-2); 
-        let monthStr = ('0' + (dDate.getMonth() + 1)).slice(-2); 
-        let yearStr = String(dDate.getFullYear()).slice(-2); 
-        let notaPrefix = 'WRL.' + dayStr + monthStr + yearStr + '.';
-        (appData.produksi||[]).forEach(function(row) { 
-            if(row && row['No Nota'] && String(row['No Nota']).startsWith(notaPrefix)) { 
-                let parts = String(row['No Nota']).split('.'); 
-                if (parts.length > 2) { 
-                    let n = parseInt(parts[2]); 
-                    if(!isNaN(n) && n > maxNota) maxNota = n; 
+        // Deteksi apakah ini Update (Edit) atau Transaksi Baru
+        if (window.currentEditTxId) {
+            txId = window.currentEditTxId;
+            var originalTx = appData.produksi.find(x => String(x.ID) === String(txId));
+            noNota = originalTx ? originalTx['No Nota'] : '';
+            waktuMasuk = window.originalWaktuMasuk || new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
+            finalStatus = window.originalStatusTx || 'Proses';
+            
+            // Bersihkan flag Edit agar transaksi selanjutnya kembali normal
+            window.currentEditTxId = null;
+            window.originalWaktuMasuk = null;
+            window.originalStatusTx = null;
+        } else {
+            let maxNum = 0;
+            (appData.produksi || []).forEach(r => { 
+                if (!r) return;
+                let idStr = String(r.ID || ''); 
+                if(idStr.startsWith('TX-')) { 
+                    let num = parseInt(idStr.split('-')[1]); 
+                    if(!isNaN(num) && num > maxNum) maxNum = num; 
                 } 
-            } 
-        });
-        let noNota = notaPrefix + String(maxNota+1).padStart(3,'0');
-        let waktuMasuk = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
-        
+            });
+            txId = 'TX-' + String(maxNum + 1).padStart(4, '0');
+
+            let maxNota = 0; 
+            let dDate = new Date(); 
+            let dayStr = ('0' + dDate.getDate()).slice(-2); 
+            let monthStr = ('0' + (dDate.getMonth() + 1)).slice(-2); 
+            let yearStr = String(dDate.getFullYear()).slice(-2); 
+            let notaPrefix = 'WRL.' + dayStr + monthStr + yearStr + '.';
+            (appData.produksi||[]).forEach(function(row) { 
+                if(row && row['No Nota'] && String(row['No Nota']).startsWith(notaPrefix)) { 
+                    let parts = String(row['No Nota']).split('.'); 
+                    if (parts.length > 2) { 
+                        let n = parseInt(parts[2]); 
+                        if(!isNaN(n) && n > maxNota) maxNota = n; 
+                    } 
+                } 
+            });
+            noNota = notaPrefix + String(maxNota+1).padStart(3,'0');
+            waktuMasuk = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
+            finalStatus = 'Proses';
+        }
+
         var recordObj = { 
             'ID': txId,
             'Waktu Masuk': waktuMasuk,
@@ -716,7 +829,7 @@ function submitStaffTransaction() {
             'Nama Pelanggan': nama, 
             'No Telpon': hp, 
             'Layanan': detailArr.join(' + '), 
-            'Status': 'Proses',
+            'Status': finalStatus,
             'Total Harga': total, 
             'No Nota': noNota,
             'Pembayaran': calcRes.pmb, 
@@ -769,12 +882,27 @@ function submitStaffTransaction() {
     } catch (error) { console.error(error); showToast("Error sistem: " + error.message, "error"); var btn = document.getElementById('btn-submit-staff'); if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; } }
 }
 
+// ZETTBOT FIX: Mencegah Kuota Ganda Saat Update Data
 function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
     if (btn) { btn.innerHTML = '<i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> SIMPAN'; btn.disabled = false; }
     
     var existsIdx = appData.produksi.findIndex(function(tx) { return String(tx['ID']) === String(recordObj['ID']); });
-    if (existsIdx >= 0) { appData.produksi[existsIdx] = recordObj; } else { appData.produksi.push(recordObj); }
+    
+    // Jika Transaksi Diupdate (Edit), Kembalikan Kuota Lama Dulu Agar Tidak Tumpang Tindih
+    if (existsIdx >= 0) { 
+        var oldTx = appData.produksi[existsIdx];
+        if (oldTx['Pembayaran'] === 'Potong Kuota' && oldTx['Kg Terpakai']) {
+            var custIdx = appData.pelanggan.findIndex(p => p && p['Nama Pelanggan'] === oldTx['Nama Pelanggan']);
+            if (custIdx >= 0) {
+                appData.pelanggan[custIdx]['Sisa Kuota (Kg)'] = parseFloat(appData.pelanggan[custIdx]['Sisa Kuota (Kg)']) + parseFloat(oldTx['Kg Terpakai']);
+            }
+        }
+        appData.produksi[existsIdx] = recordObj; 
+    } else { 
+        appData.produksi.push(recordObj); 
+    }
 
+    // Terapkan Potongan Kuota Baru (Untuk Edit maupun Transaksi Baru)
     if (recordObj['Pembayaran'] === 'Potong Kuota' && recordObj['Kg Terpakai']) {
         var custIdx = appData.pelanggan.findIndex(p => p && p['Nama Pelanggan'] === recordObj['Nama Pelanggan']);
         if (custIdx >= 0) {
@@ -815,40 +943,11 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
                 body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload })
             })
             .then(function(res) { return res.json(); })
-            .then(function(resData) {
-                if (resData && resData.success) {
-                    if (resData.data && typeof mergeProduksiData === 'function') {
-                        appData.produksi = mergeProduksiData(resData.data);
-                        let safeguardIdx = appData.produksi.findIndex(tx => String(tx.ID) === String(recordObj.ID));
-                        if (safeguardIdx >= 0) {
-                            appData.produksi[safeguardIdx] = recordObj; 
-                        } else {
-                            appData.produksi.push(recordObj);
-                        }
-                        if (typeof sortDataByIdDesc === 'function') appData.produksi = sortDataByIdDesc(appData.produksi);
-                    }
-                    
-                    if (resData.pelanggan && typeof cleanPhoneQuotes === 'function') {
-                        let serverPlg = cleanPhoneQuotes(resData.pelanggan);
-                        appData.pelanggan.forEach(localPlg => {
-                            if (!serverPlg.find(sp => String(sp.ID) === String(localPlg.ID))) serverPlg.push(localPlg);
-                        });
-                        appData.pelanggan = typeof sortDataByIdDesc === 'function' ? sortDataByIdDesc(serverPlg) : serverPlg;
-                    }
-                    
-                    if (typeof database !== 'undefined' && database) database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
-                    if (typeof renderStaffTable === 'function') renderStaffTable(true);
-                    if (typeof renderTable === 'function') { renderTable('Produksi', true); renderTable('Pelanggan', true); }
-                }
-            })
             .catch(function(e) { console.error("ZettBridge Error:", e); });
         }
     };
 
     if (fileBase64) {
-        // ZETTBOT FIX: Bypass ImgBB karena issue SSL di browser client (ERR_SSL_VERSION_OR_CIPHER_MISMATCH)
-        // Frontend akan menggunakan Base64 sementara agar gambar langsung muncul (Instan).
-        // Background sync akan mengirim Base64 ke Google Drive via Apps Script.
         console.log("ZettBOT: Memproses foto langsung ke Google Drive Backend...");
         sendToBackend(payloadToBackend, { filename: recordObj.ID + '.jpg', mimeType: 'image/jpeg', base64: fileBase64 });
     } else {
@@ -856,6 +955,7 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
     }
 }
 
+// ZETTBOT FIX: Suntikkan Tombol 'Ubah Rincian' ke dalam Modal Preview Struk
 function openTxDetail(id) {
     var px = appData.produksi.find(function(x) { return x && String(x['ID']) === String(id); }); if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
     currentDetailId = id; var cust = resolvePelanggan(px['ID Pelanggan'], px); currentSavedTx = {...px, 'Nama Pelanggan': cust.nama, 'No Telpon': cust.hp};
@@ -917,6 +1017,19 @@ function openTxDetail(id) {
         if (isPaymentLocked && pmbEl) {
             pmbEl.disabled = true;
             pmbEl.classList.add('opacity-50', 'cursor-not-allowed', 'bg-slate-200');
+        }
+
+        // ZETTBOT FEATURE: Menambahkan Tombol Full Edit ke dalam Kontrol Edit yang ada
+        var fullEditBtnId = 'btn-full-edit-tx';
+        var existingBtn = document.getElementById(fullEditBtnId);
+        if (!existingBtn && editCtrls) {
+            var btn = document.createElement('button');
+            btn.id = fullEditBtnId;
+            btn.type = 'button';
+            btn.className = 'w-full mt-3 border-2 border-slate-200 text-slate-600 hover:bg-slate-50 font-bold py-2.5 rounded-xl transition-all flex items-center justify-center text-sm active:scale-95';
+            btn.innerHTML = '<i class="ph-bold ph-pencil-simple-line mr-2 text-lg"></i> UBAH RINCIAN LAYANAN';
+            btn.onclick = function() { closeModal('modal-tx-detail'); editFullTransactionStaff(currentDetailId); };
+            editCtrls.appendChild(btn);
         }
     }
     
@@ -1475,20 +1588,6 @@ async function actionPrintReceipt(idOverride) {
         }, 500); 
     });
 }
-
-var startY = 0;
-document.addEventListener('touchstart', e => { if(window.scrollY < 10) startY = e.touches[0].pageY; });
-document.addEventListener('touchend', e => {
-    var modalStaff = document.getElementById('modal-staff-tx');
-    var isModalOpen = modalStaff && !modalStaff.classList.contains('hidden');
-
-    if(window.scrollY < 10 && e.changedTouches[0].pageY - startY > 150) {
-        if (isModalOpen) return; 
-        
-        showToast("Menyegarkan data...");
-        fetchInitialData();
-    }
-});
 
 document.addEventListener('input', e => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
