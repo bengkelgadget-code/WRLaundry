@@ -339,6 +339,7 @@ function attachPaymentScroll(inputId) {
 }
 
 function openStaffModal(isEditMode) {
+    window.currentDetailId = null; 
     window.currentEditTxId = null;
     window.originalWaktuMasuk = null;
     window.originalStatusTx = null;
@@ -452,7 +453,7 @@ window.editFullTransactionStaff = function(id) {
         var realCust = (appData.pelanggan || []).find(function(p) { return p['ID'] === tx['ID Pelanggan']; });
         var infoEl = document.getElementById('staff-member-info');
         
-        if (realCust && realCust['Status'] === 'Member') {
+        if (realCust && realCust && realCust['Status'] === 'Member') {
             togglePotongKuotaOption(true, false);
             var sisaKuota = parseFloat(realCust['Sisa Kuota (Kg)'] || 0); var paketName = '-';
             if (realCust['Paket Member']) {
@@ -967,6 +968,7 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
     closeModal('modal-staff-tx');
     var soundEl = document.getElementById('sound-success'); if (soundEl) { soundEl.play().catch(function(e){}); }
     currentSavedTx = recordObj;
+    currentDetailId = recordObj['ID']; // ZETTBOT FIX: Wajib update memori agar cetak struk ambil ID terbaru
     document.getElementById('receipt-preview-content').innerHTML = generateReceiptHTML(currentSavedTx);
     showSuccessModal();
 
@@ -1027,7 +1029,7 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
 }
 
 function openTxDetail(id) {
-    var px = appData.produksi.find(function(x) { return x && String(x['ID']) === String(id); }); if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
+    var px = appData.produksi.find(function(x) { return String(x['ID']) === String(id); }); if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
     currentDetailId = id; var cust = resolvePelanggan(px['ID Pelanggan'], px); currentSavedTx = {...px, 'Nama Pelanggan': cust.nama, 'No Telpon': cust.hp};
     document.getElementById('tx-detail-preview').innerHTML = generateReceiptHTML(currentSavedTx);
     
@@ -1222,8 +1224,37 @@ function viewProduksiDetail(id) {
     var modal = document.getElementById('modal-view-produksi'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
 }
 
+function parseDateDMY(dateStr) {
+    if(!dateStr) return new Date(9999, 11, 31).getTime();
+    var p = dateStr.split('/');
+    if(p.length === 3) return new Date(p[2], p[1]-1, p[0]).getTime();
+    return 0;
+}
+
+function wrapTextCenterRaw(text, width) {
+    if(!text) return "";
+    var words = text.split(' ');
+    var lines = [];
+    var currLine = '';
+    for(var i=0; i<words.length; i++) {
+        if((currLine + words[i]).length > width) {
+            if(currLine) lines.push(currLine.trim());
+            currLine = words[i] + ' ';
+        } else {
+            currLine += words[i] + ' ';
+        }
+    }
+    if(currLine) lines.push(currLine.trim());
+    var res = '';
+    lines.forEach(function(l) {
+        var space = Math.max(0, Math.floor((width - l.length) / 2));
+        res += " ".repeat(space) + l + "\n";
+    });
+    return res;
+}
+
 function generateReceiptHTML(px) {
-    var layananHTML = ''; var estimasiGlobalHTML = ''; var items = []; var diskonTx = 0; var potonganMemberTx = 0; var subtotalTx = Number(px['Total Harga'] || 0); var kgTerpakaiTx = parseFloat(px['Kg Terpakai']) || 0;
+    var layananHTML = ''; var items = []; var diskonTx = 0; var potonganMemberTx = 0; var subtotalTx = Number(px['Total Harga'] || 0); var kgTerpakaiTx = parseFloat(px['Kg Terpakai']) || 0;
     var custData = appData.pelanggan.find(function(p) { return p && p['Nama Pelanggan'] === px['Nama Pelanggan']; }); var currentSisaKuota = custData ? (parseFloat(custData['Sisa Kuota (Kg)']) || 0) : 0; 
     currentSisaKuota = Math.round(currentSisaKuota * 100) / 100;
     if (px['Detail Layanan JSON']) { try { var parsed = JSON.parse(px['Detail Layanan JSON']); if(!Array.isArray(parsed)) { items = parsed.items || []; diskonTx = parsed.diskon || 0; potonganMemberTx = parsed.potonganMember || 0; subtotalTx = parsed.subtotal || subtotalTx; } else { items = parsed; } } catch(e) {} }
@@ -1235,24 +1266,46 @@ function generateReceiptHTML(px) {
     if (pmbStatusVal === 'Potong Kuota' && kgTerpakaiTx === 0 && items.length > 0) { items.forEach(function(i) { if(i.satuan === 'Kg') kgTerpakaiTx += i.qty; }); }
     var trackingSisaKuota = currentSisaKuota + kgTerpakaiTx;
     var remainingKg = kgTerpakaiTx;
-    var allSameDate = true; var firstDate = items.length > 0 ? (items[0].estimasiSelesai ? String(items[0].estimasiSelesai).split(' - ')[0].split(' ')[0] : '') : '';
-    for(var i=1; i<items.length; i++){ var currEst = items[i].estimasiSelesai ? String(items[i].estimasiSelesai).split(' - ')[0].split(' ')[0] : ''; if(currEst !== firstDate){ allSameDate = false; break; } }
-    if (allSameDate && firstDate) { estimasiGlobalHTML = '<p style="margin:0; font-size:11px; font-weight:bold; color:black;">Selesai: ' + firstDate + '</p>'; }
     
+    var allSameDate = true; 
+    var firstDate = '';
+
     if (items.length > 0) {
+        items.sort(function(a, b) {
+            var da = a.estimasiSelesai ? String(a.estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
+            var db = b.estimasiSelesai ? String(b.estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
+            return parseDateDMY(da) - parseDateDMY(db);
+        });
+
+        firstDate = items[0].estimasiSelesai ? String(items[0].estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
+        for(var i=1; i<items.length; i++){ 
+            var currEst = items[i].estimasiSelesai ? String(items[i].estimasiSelesai).split(' - ')[0].split(' ')[0] : ''; 
+            if(currEst !== firstDate){ allSameDate = false; break; } 
+        }
+
         var arrHtml = [];
         items.forEach(function(item, index) {
             var isCoveredByQuota = false; var kgDeducted = 0;
             if (pmbStatusVal === 'Potong Kuota' && item.satuan === 'Kg' && remainingKg > 0) { isCoveredByQuota = true; kgDeducted = Math.min(item.qty, remainingKg); remainingKg -= kgDeducted; }
-            var itemEst = item.estimasiSelesai ? String(item.estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
-            var estHtml = (!allSameDate && itemEst) ? ('<br><span style="color:black;">Selesai: ' + itemEst + '</span>') : '';
-            var mb = (index < items.length - 1) ? '12px' : '6px';
             
-            if (isCoveredByQuota) { arrHtml.push('<div style="margin-bottom:' + mb + ';"><div style="display:flex; justify-content:space-between; font-weight:bold; color:black;"><span>' + item.nama + '</span><span>-</span></div><div style="font-size:10px; color:black;">' + (Math.round(trackingSisaKuota*100)/100) + ' Kg - ' + item.qty + ' Kg = ' + (Math.round((trackingSisaKuota - item.qty)*100)/100) + ' Kg' + estHtml + '</div></div>'); trackingSisaKuota -= item.qty; } 
-            else { arrHtml.push('<div style="margin-bottom:' + mb + ';"><div style="display:flex; justify-content:space-between; font-weight:bold; color:black;"><span>' + item.nama + '</span><span>Rp ' + Number(item.subtotal).toLocaleString('id-ID') + '</span></div><div style="font-size:10px; color:black;">' + item.qty + ' ' + item.satuan + ' x Rp ' + Number(item.subtotal/item.qty).toLocaleString('id-ID') + estHtml + '</div></div>'); }
+            var itemEst = item.estimasiSelesai ? String(item.estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
+            var estHtml = (!allSameDate && itemEst) ? ('<div style="font-size:10px; color:black; font-style: italic; margin-top:1px;">Selesai: ' + itemEst + '</div>') : '';
+            var mb = (index < items.length - 1) ? '8px' : '4px';
+            
+            if (isCoveredByQuota) { 
+                arrHtml.push('<div style="margin-bottom:' + mb + ';"><div style="display:flex; justify-content:space-between; font-weight:bold; color:black;"><span>' + item.nama + '</span><span>-</span></div><div style="font-size:10px; color:black;">' + (Math.round(trackingSisaKuota*100)/100) + ' Kg - ' + item.qty + ' Kg = ' + (Math.round((trackingSisaKuota - item.qty)*100)/100) + ' Kg</div>' + estHtml + '</div>'); 
+                trackingSisaKuota -= item.qty; 
+            } else { 
+                arrHtml.push('<div style="margin-bottom:' + mb + ';"><div style="display:flex; justify-content:space-between; font-weight:bold; color:black;"><span>' + item.nama + '</span><span>Rp ' + Number(item.subtotal).toLocaleString('id-ID') + '</span></div><div style="font-size:10px; color:black;">' + item.qty + ' ' + item.satuan + ' x Rp ' + Number(item.subtotal/item.qty).toLocaleString('id-ID') + '</div>' + estHtml + '</div>'); 
+            }
         });
         layananHTML = arrHtml.join(''); 
-    } else { layananHTML = (px['Layanan'] || '').replace(/\+/g, '<br>'); }
+        if (allSameDate && firstDate) { 
+            layananHTML += '<div style="font-size:11px; font-weight:bold; color:black; font-style: italic; margin-top:6px;">Selesai: ' + firstDate + '</div>'; 
+        }
+    } else { 
+        layananHTML = (px['Layanan'] || '').replace(/\+/g, '<br>'); 
+    }
     
     var dpAmount = Number(px['DP'] || 0); var sisaAmount = Number(px['Sisa Bayar'] !== undefined ? px['Sisa Bayar'] : totalHarga);
     if (pmbStatusVal === 'Lunas' || pmbStatusVal === 'Potong Kuota') { sisaAmount = 0; }
@@ -1275,7 +1328,6 @@ function generateReceiptHTML(px) {
     }
     paymentHTML += '</table>';
     
-    // ZETTBOT FIX: Resolusi akurat pelanggan sebelum merender PDF/HTML receipt
     var kasirName = (currentUser && currentUser['Nama Lengkap']) ? currentUser['Nama Lengkap'] : 'Admin';
     var tglMasuk = (px['Waktu Masuk'] ? String(px['Waktu Masuk']).split(' ')[0] : '-'); 
     var custResolved = typeof resolvePelanggan === 'function' ? resolvePelanggan(px['ID Pelanggan'], px) : {nama: px['Nama Pelanggan']};
@@ -1289,7 +1341,7 @@ function generateReceiptHTML(px) {
     finalHtml += '<div style="font-family: monospace; color: black; font-size: 11px; width: 100%;">';
     finalHtml += '<div style="text-align: center; margin: 18px 0 8px 0;">';
     finalHtml += '<h2 style="margin:0 0 4px 0; font-size:16px; font-weight:900; letter-spacing:1px; color:black; font-family:\'Bricolage Grotesque\', sans-serif;">' + (appSettings.nama.toUpperCase()) + '</h2>';
-    finalHtml += '<p style="margin:0; font-size:10px; color:black; line-height:1.3;">' + (appSettings.alamat) + '</p>';
+    finalHtml += '<p style="margin:0; font-size:10px; color:black; line-height:1.3; white-space: normal; word-wrap: break-word; text-align: center;">' + (appSettings.alamat) + '</p>';
     finalHtml += '</div>';
     finalHtml += '<div style="border-top: 1px dashed black; border-bottom: 1px dashed black; height: 2px; margin: 6px 0;"></div>';
     finalHtml += '<table width="100%" style="font-size:11px; color:black; margin-bottom:6px; font-weight:bold;">';
@@ -1301,23 +1353,25 @@ function generateReceiptHTML(px) {
     finalHtml += '<h1 style="margin:0; font-size:' + nameFontSize + '; font-weight:900; color:black; line-height:1.1; word-wrap:break-word;">' + nameCust + '</h1>';
     finalHtml += '</div>';
     finalHtml += '<div style="border-bottom: 1px dashed black; margin: 6px 0;"></div>';
-    finalHtml += estimasiGlobalHTML;
     finalHtml += '<div style="font-size:11px; line-height:1.6; color:black;">' + layananHTML + '</div>';
     finalHtml += paymentHTML;
     
-    // ZETTBOT FIX: Sisa Bayar Component khusus
-    finalHtml += '<div style="border-top: 1px dashed black; border-bottom: 1px dashed black; padding: 8px 0; margin: 12px 0; text-align: center;">';
-    finalHtml += '<div style="font-size: 11px; font-weight: bold; color: black; margin-bottom: 4px;">SISA BAYAR</div>';
-    finalHtml += '<div style="font-size: ' + sisaFontSize + '; font-weight: 900; color: black; font-family:\'Bricolage Grotesque\', sans-serif;">Rp ' + sisaAmount.toLocaleString('id-ID') + '</div>';
-    finalHtml += '</div>';
+    if (!isPureMember && !usedQuota) {
+        finalHtml += '<div style="border-top: 1px dashed black; border-bottom: 1px dashed black; padding: 6px 0; margin: 12px 0; text-align: center;">';
+        finalHtml += '<div style="font-size: 11px; font-weight: bold; color: black; margin-bottom: 2px;">SISA BAYAR</div>';
+        finalHtml += '<div style="font-size: ' + sisaFontSize + '; font-weight: 900; color: black; font-family:\'Bricolage Grotesque\', sans-serif;">Rp ' + sisaAmount.toLocaleString('id-ID') + '</div>';
+        finalHtml += '</div>';
+    } else {
+        finalHtml += '<div style="border-bottom: 1px dashed black; margin: 12px 0;"></div>';
+    }
 
-    finalHtml += '<div style="text-align: left; margin-top: 10px; font-size: 9px; color: black; line-height: 1.4;">';
-    finalHtml += '<p style="margin:0; text-align: center; font-weight: bold; padding-bottom: 6px; font-size:11px;">Terima Kasih</p>';
-    finalHtml += '<ol style="margin:0; padding-left:16px; list-style-position: outside;">';
-    finalHtml += '<li style="padding-bottom:2px;">Pakaian luntur bukan tanggung jawab laundry.</li>';
-    finalHtml += '<li style="padding-bottom:2px;">Minimum perhitungan laundry kiloan (1 Kg).</li>';
-    finalHtml += '<li style="padding-bottom:2px;">Tidak menerima laundry dalaman.</li>';
-    finalHtml += '<li style="padding-bottom:2px;">Cucian tidak diambil 1 bulan bukan tanggung jawab kami.</li>';
+    finalHtml += '<div style="text-align: left; margin-top: 10px; font-size: 8px; color: black; line-height: 1.4;">';
+    finalHtml += '<p style="margin:0; text-align: center; font-weight: bold; padding-bottom: 6px; font-size:10px;">Terima Kasih</p>';
+    finalHtml += '<ol style="margin:0; padding-left:12px; list-style-position: outside;">';
+    finalHtml += '<li style="padding-bottom:2px; padding-left:2px;">Pakaian luntur bukan tanggung jawab laundry.</li>';
+    finalHtml += '<li style="padding-bottom:2px; padding-left:2px;">Minimum perhitungan laundry kiloan (1 Kg).</li>';
+    finalHtml += '<li style="padding-bottom:2px; padding-left:2px;">Tidak menerima laundry dalaman.</li>';
+    finalHtml += '<li style="padding-bottom:2px; padding-left:2px;">Cucian tidak diambil 1 bulan bukan tanggung jawab kami.</li>';
     finalHtml += '</ol>';
     finalHtml += '<div style="height: 60px;"></div>';
     finalHtml += '</div>';
@@ -1339,7 +1393,9 @@ function generateRawTextReceipt(px) {
     str += center;
     str += sizeDoubleHeight + appSettings.nama.toUpperCase() + "\n";
     str += sizeNormal;
-    str += (appSettings.alamat||'') + "\n";
+    if (appSettings.alamat) {
+        str += wrapTextCenterRaw(appSettings.alamat, 32);
+    }
     str += left;
     str += "================================\n";
 
@@ -1351,7 +1407,6 @@ function generateRawTextReceipt(px) {
     str += "\n";
     str += center;
     
-    // ZETTBOT FIX: Pastikan nama pelanggan selalu ter-resolve dengan fungsi cerdas via Master Data
     var custResolved = typeof resolvePelanggan === 'function' ? resolvePelanggan(px['ID Pelanggan'], px) : {nama: px['Nama Pelanggan']};
     var nameCust = custResolved.nama || px['Nama Pelanggan'] || '-';
     
@@ -1363,15 +1418,20 @@ function generateRawTextReceipt(px) {
     var items = []; var subtotalTx = Number(px['Total Harga'] || 0); var diskonTx = 0;
     if (px['Detail Layanan JSON']) { try { var parsed = JSON.parse(px['Detail Layanan JSON']); items = Array.isArray(parsed) ? parsed : (parsed.items || []); diskonTx = parsed.diskon || 0; } catch(e) {} }
 
-    var allSameDate = true; var firstDate = items.length > 0 ? (items[0].estimasiSelesai ? String(items[0].estimasiSelesai).split(' - ')[0].split(' ')[0] : '') : '';
-    for(var i=1; i<items.length; i++){ var currEst = items[i].estimasiSelesai ? String(items[i].estimasiSelesai).split(' - ')[0].split(' ')[0] : ''; if(currEst !== firstDate){ allSameDate = false; break; } }
-
-    if (allSameDate && firstDate) {
-        str += "Selesai  : " + firstDate + "\n";
-    }
-    str += "--------------------------------\n";
-
+    var allSameDate = true; var firstDate = '';
     if (items.length > 0) {
+        items.sort(function(a, b) {
+            var da = a.estimasiSelesai ? String(a.estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
+            var db = b.estimasiSelesai ? String(b.estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
+            return parseDateDMY(da) - parseDateDMY(db);
+        });
+
+        firstDate = items[0].estimasiSelesai ? String(items[0].estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
+        for(var i=1; i<items.length; i++){ 
+            var currEst = items[i].estimasiSelesai ? String(items[i].estimasiSelesai).split(' - ')[0].split(' ')[0] : ''; 
+            if(currEst !== firstDate){ allSameDate = false; break; } 
+        }
+
         items.forEach(function(item, index) {
             str += item.nama + "\n";
             var line2 = item.qty + " " + item.satuan + " x " + Number(item.subtotal/item.qty).toLocaleString('id-ID');
@@ -1384,7 +1444,13 @@ function generateRawTextReceipt(px) {
             }
             if (index < items.length - 1) { str += "\n"; }
         });
-    } else { str += (px['Layanan'] || '').replace(/\+/g, '\n\n') + "\n"; } 
+
+        if (allSameDate && firstDate) {
+            str += "\nSelesai: " + firstDate + "\n";
+        }
+    } else { 
+        str += (px['Layanan'] || '').replace(/\+/g, '\n\n') + "\n"; 
+    }
 
     str += "--------------------------------\n";
     var totalHarga = Number(px['Total Harga'] || 0);
@@ -1403,14 +1469,20 @@ function generateRawTextReceipt(px) {
         str += splitKV("DP", "Rp " + dpAmount.toLocaleString('id-ID'));
     }
 
-    str += "--------------------------------\n";
-    str += center;
-    str += "SISA BAYAR\n";
-    if (nameCust.length > 15) {
-        str += sizeDoubleHeight + "Rp " + sisaAmount.toLocaleString('id-ID') + "\n";
+    if (pmbStatusVal !== 'Potong Kuota') {
+        str += "--------------------------------\n";
+        str += center;
+        str += "SISA BAYAR\n";
+        if (nameCust.length > 15) {
+            str += sizeDoubleHeight + "Rp " + sisaAmount.toLocaleString('id-ID') + "\n";
+        } else {
+            str += sizeDouble + "Rp " + sisaAmount.toLocaleString('id-ID') + "\n";
+        }
     } else {
-        str += sizeDouble + "Rp " + sisaAmount.toLocaleString('id-ID') + "\n";
+        str += "--------------------------------\n";
+        str += center;
     }
+
     str += sizeNormal;
     str += "--------------------------------\n";
     str += center;
@@ -1673,10 +1745,11 @@ async function actionPrintReceipt(idOverride) {
     }
 
     zettConfirm("Gunakan Mode Cetak Sistem?", "Bluetooth browser gagal/tidak support.\n\nSistem akan mengalihkan ke mode cetak sistem. Jika layar menampilkan 'Simpan sebagai PDF', ubah tujuan printer ke nama Printer Bluetooth Anda.\n\n(Pastikan aplikasi RawBT terinstall dari PlayStore).", "info", function() {
+        // ZETTBOT FIX: Delay 800ms agar custom font internet terdownload dulu sebelum window.print dipanggil
         setTimeout(function() { 
             document.getElementById('print-area').innerHTML = generateReceiptHTML(tx); 
             window.print(); 
-        }, 500); 
+        }, 800); 
     });
 }
 
