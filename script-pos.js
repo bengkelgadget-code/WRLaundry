@@ -266,7 +266,7 @@ function initCustomerAutocomplete() {
                                         if (matchedKiloan) { var firstRowId = Object.keys(staffServicesData)[0]; if (firstRowId) { var tsSelect = tsInstances['staff-srv-select-' + firstRowId]; if (tsSelect) { var targetVal = 'K-' + matchedKiloan['ID']; tsSelect.setValue(targetVal); handleStaffServiceSelect(firstRowId, targetVal); } } }
                                     }
                                 }
-                                infoEl.innerHTML = '<i class="ph-fill ph-diamond text-lg"></i> <span>Paket <b>' + paketName + '</b> | Sisa Kuota <b>' + sisaKuota + ' Kg</b></span>'; infoEl.classList.remove('hidden'); infoEl.classList.add('flex');
+                                infoEl.innerHTML = '<i class="ph-fill ph-diamond text-lg"></i> <span>Paket b>' + paketName + '</b> | Sisa Kuota <b>' + sisaKuota + ' Kg</b></span>'; infoEl.classList.remove('hidden'); infoEl.classList.add('flex');
                                 if (pmbInput) { pmbInput.value = 'Potong Kuota'; handlePembayaranChange(); }
                             } else {
                                 togglePotongKuotaOption(false, false);
@@ -418,7 +418,7 @@ window.editFullTransactionStaff = function(id) {
     var tx = appData.produksi.find(function(x) { return String(x.ID) === String(id); });
     if(!tx) { showToast("Data transaksi gagal dimuat", "error"); return; }
     
-    openStaffModal(); 
+    openStaffModal(true); 
     
     setTimeout(function() {
         window.currentEditTxId = id;
@@ -453,7 +453,7 @@ window.editFullTransactionStaff = function(id) {
         var realCust = (appData.pelanggan || []).find(function(p) { return p['ID'] === tx['ID Pelanggan']; });
         var infoEl = document.getElementById('staff-member-info');
         
-        if (realCust && realCust && realCust['Status'] === 'Member') {
+        if (realCust && realCust['Status'] === 'Member') {
             togglePotongKuotaOption(true, false);
             var sisaKuota = parseFloat(realCust['Sisa Kuota (Kg)'] || 0); var paketName = '-';
             if (realCust['Paket Member']) {
@@ -785,6 +785,17 @@ function submitStaffTransaction() {
                     body: JSON.stringify({ action: 'saveRecord', payload: {sheetName: 'Pelanggan', data: newCustSheets} }) 
                 })
                 .then(res => res.json())
+                .then(resData => {
+                    if (resData && resData.success && resData.data && typeof cleanPhoneQuotes === 'function') {
+                        let serverPlg = cleanPhoneQuotes(resData.data);
+                        appData.pelanggan.forEach(localPlg => {
+                            if (!serverPlg.find(sp => String(sp.ID) === String(localPlg.ID))) serverPlg.push(localPlg);
+                        });
+                        appData.pelanggan = typeof sortDataByIdDesc === 'function' ? sortDataByIdDesc(serverPlg) : serverPlg;
+                        if (typeof database !== 'undefined' && database) database.ref('appData/pelanggan').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData.pelanggan) : appData.pelanggan);
+                        if (typeof renderTable === 'function') renderTable('Pelanggan', true);
+                    }
+                })
                 .catch(e => console.warn("Auto-save failed: ", e));
             }
         }
@@ -855,6 +866,7 @@ function submitStaffTransaction() {
             noNota = notaPrefix + String(maxNota+1).padStart(3,'0');
             waktuMasuk = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
             finalStatus = 'Proses';
+            window.tempOldFoto = null;
         }
 
         var recordObj = { 
@@ -958,7 +970,6 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
     if(typeof updateDashboard === 'function') updateDashboard();
 
     closeModal('modal-staff-tx');
-    var soundEl = document.getElementById('sound-success'); if (soundEl) { soundEl.play().catch(function(e){}); }
     
     currentSavedTx = recordObj;
     currentDetailId = recordObj['ID']; 
@@ -984,11 +995,38 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
                 body: JSON.stringify({ action: 'saveTransaksiStaff', payload: payload })
             })
             .then(function(res) { return res.json(); })
+            .then(function(resData) {
+                if (resData && resData.success) {
+                    if (resData.data && typeof mergeProduksiData === 'function') {
+                        appData.produksi = mergeProduksiData(resData.data);
+                        let safeguardIdx = appData.produksi.findIndex(tx => String(tx.ID) === String(recordObj.ID));
+                        if (safeguardIdx >= 0) {
+                            appData.produksi[safeguardIdx] = recordObj; 
+                        } else {
+                            appData.produksi.push(recordObj);
+                        }
+                        if (typeof sortDataByIdDesc === 'function') appData.produksi = sortDataByIdDesc(appData.produksi);
+                    }
+                    
+                    if (resData.pelanggan && typeof cleanPhoneQuotes === 'function') {
+                        let serverPlg = cleanPhoneQuotes(resData.pelanggan);
+                        appData.pelanggan.forEach(localPlg => {
+                            if (!serverPlg.find(sp => String(sp.ID) === String(localPlg.ID))) serverPlg.push(localPlg);
+                        });
+                        appData.pelanggan = typeof sortDataByIdDesc === 'function' ? sortDataByIdDesc(serverPlg) : serverPlg;
+                    }
+                    
+                    if (typeof database !== 'undefined' && database) database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
+                    if (typeof renderStaffTable === 'function') renderStaffTable(true);
+                    if (typeof renderTable === 'function') { renderTable('Produksi', true); renderTable('Pelanggan', true); }
+                }
+            })
             .catch(function(e) { console.error("ZettBridge Error:", e); });
         }
     };
 
     if (fileBase64) {
+        console.log("ZettBOT: Memproses foto langsung ke Google Drive Backend...");
         sendToBackend(payloadToBackend, { filename: recordObj.ID + '.jpg', mimeType: 'image/jpeg', base64: fileBase64 });
     } else {
         sendToBackend(payloadToBackend, null);
@@ -996,7 +1034,7 @@ function execSaveStaff(recordObj, fileBase64, btn, recordObjForSheets) {
 }
 
 function openTxDetail(id) {
-    var px = appData.produksi.find(function(x) { return x && String(x['ID']) === String(id); }); if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
+    var px = appData.produksi.find(function(x) { return String(x['ID']) === String(id); }); if(!px) { showToast("Data transaksi tidak ditemukan", "error"); return; }
     currentDetailId = id; var cust = resolvePelanggan(px['ID Pelanggan'], px); currentSavedTx = {...px, 'Nama Pelanggan': cust.nama, 'No Telpon': cust.hp};
     document.getElementById('tx-detail-preview').innerHTML = generateReceiptHTML(currentSavedTx);
     
@@ -1057,7 +1095,7 @@ function openTxDetail(id) {
             pmbEl.disabled = true;
             pmbEl.classList.add('opacity-50', 'cursor-not-allowed', 'bg-slate-200');
         }
-
+        
         var fullEditBtnId = 'btn-full-edit-tx';
         var existingBtn = document.getElementById(fullEditBtnId);
         if (!existingBtn && editCtrls) {
@@ -1191,55 +1229,6 @@ function viewProduksiDetail(id) {
     var modal = document.getElementById('modal-view-produksi'); if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
 }
 
-function parseDateDMY(dateStr) {
-    if(!dateStr) return new Date(9999, 11, 31).getTime();
-    var p1 = dateStr.split(' ');
-    var pD = p1[0].split('/');
-    if(pD.length !== 3) return new Date(9999, 11, 31).getTime();
-    var d = new Date(pD[2], pD[1]-1, pD[0]);
-    if(p1[1]) {
-        var pT = p1[1].split(':');
-        if(pT.length === 2) { d.setHours(parseInt(pT[0]), parseInt(pT[1])); }
-    }
-    return d.getTime();
-}
-
-function wrapTextCenterRaw(text, width) {
-    if(!text) return "";
-    var words = text.split(' ');
-    var lines = [];
-    var currLine = '';
-    for(var i=0; i<words.length; i++) {
-        if((currLine + words[i]).length > width) {
-            if(currLine) lines.push(currLine.trim());
-            currLine = words[i] + ' ';
-        } else {
-            currLine += words[i] + ' ';
-        }
-    }
-    if(currLine) lines.push(currLine.trim());
-    return lines.join('\n') + '\n';
-}
-
-function wrapTextIndentRaw(prefix, text, width) {
-    if(!text) return "";
-    var indent = " ";
-    for(var j=1; j<prefix.length; j++) indent += " ";
-    var words = text.split(' ');
-    var lines = [];
-    var currLine = prefix;
-    for(var i=0; i<words.length; i++) {
-        if((currLine + words[i]).length > width) {
-            lines.push(currLine.replace(/\s+$/, ''));
-            currLine = indent + words[i] + ' ';
-        } else {
-            currLine += words[i] + ' ';
-        }
-    }
-    if(currLine.replace(/\s+$/, '')) lines.push(currLine.replace(/\s+$/, ''));
-    return lines.join('\n') + '\n';
-}
-
 function generateReceiptHTML(px) {
     var layananHTML = ''; var items = []; var diskonTx = 0; var potonganMemberTx = 0; var subtotalTx = Number(px['Total Harga'] || 0); var kgTerpakaiTx = parseFloat(px['Kg Terpakai']) || 0;
     var custData = appData.pelanggan.find(function(p) { return p && p['Nama Pelanggan'] === px['Nama Pelanggan']; }); var currentSisaKuota = custData ? (parseFloat(custData['Sisa Kuota (Kg)']) || 0) : 0; 
@@ -1351,13 +1340,13 @@ function generateReceiptHTML(px) {
         finalHtml += '<div style="border-bottom: 1px dashed black; margin: 12px 0;"></div>';
     }
 
-    finalHtml += '<div style="text-align: left; margin-top: 6px; font-size: 8px; color: black; line-height: 1.3;">';
-    finalHtml += '<p style="margin:0; text-align: center; font-weight: bold; padding-bottom: 4px; font-size:9px;">Terima Kasih</p>';
+    finalHtml += '<div style="text-align: left; margin-top: 6px; font-size: 7px; color: black; line-height: 1.3;">';
+    finalHtml += '<p style="margin:0; text-align: center; font-weight: bold; padding-bottom: 4px; font-size: 9px;">Terima Kasih</p>';
     finalHtml += '<ol style="margin:0; padding-left:12px; list-style-position: outside;">';
     finalHtml += '<li style="padding-bottom:2px; padding-left:0px;">Pakaian luntur bukan tanggung jawab laundry.</li>';
     finalHtml += '<li style="padding-bottom:2px; padding-left:0px;">Minimum perhitungan laundry kiloan (1 Kg).</li>';
     finalHtml += '<li style="padding-bottom:2px; padding-left:0px;">Tidak menerima laundry dalaman.</li>';
-    finalHtml += '<li style="padding-bottom:2px; padding-left:0px;">Cucian tdk diambil 1 bln bukan tanggung jawab kami.</li>';
+    finalHtml += '<li style="padding-bottom:2px; padding-left:0px;">Cucian tidak diambil 1 bulan bukan tanggung jawab kami.</li>';
     finalHtml += '</ol>';
     finalHtml += '<div style="height: 15px;"></div>';
     finalHtml += '</div>';
@@ -1373,7 +1362,6 @@ function generateRawTextReceipt(px) {
     var init = ESC + "@"; var center = ESC + "a\x01"; var left = ESC + "a\x00";
     var sizeNormal = GS + "!\x00"; var sizeDoubleHeight = GS + "!\x01"; var sizeDouble = GS + "!\x11";
     var fontSmall = ESC + "M\x01"; var fontNormal = ESC + "M\x00";
-    var italicOn = ESC + "4\x01"; var italicOff = ESC + "4\x00";
 
     var splitKV = function(k, v) { var space = Math.max(1, 32 - k.length - String(v).length); return k + " ".repeat(space) + v + "\n"; };
 
@@ -1383,6 +1371,7 @@ function generateRawTextReceipt(px) {
     var custResolved = typeof resolvePelanggan === 'function' ? resolvePelanggan(px['ID Pelanggan'], px) : {nama: px['Nama Pelanggan'] || '-'};
     var nameCust = custResolved.nama || px['Nama Pelanggan'] || '-';
 
+    // ZETTBOT FIX: Ukuran Nama Laundry 100% Mengikuti Panjang Karakter Nama Cust
     if (nameCust.length > 15) { 
         str += sizeDoubleHeight + appSettings.nama.toUpperCase() + "\n"; 
     } else { 
@@ -1390,6 +1379,7 @@ function generateRawTextReceipt(px) {
     }
     
     str += sizeNormal;
+    // ZETTBOT FIX: Padding tipis dari nama laundry ke alamat rata tengah
     str += "\n";
     if (appSettings.alamat) {
         str += wrapTextCenterRaw(appSettings.alamat, 32);
@@ -1431,15 +1421,16 @@ function generateRawTextReceipt(px) {
             var val2 = "Rp " + Number(item.subtotal).toLocaleString('id-ID');
             str += splitKV(line2, val2);
             
+            // ZETTBOT FIX: Output penanda Tanggal Selesai per-layanan (Pengganti Italic Hardware POS)
             var itemEst = item.estimasiSelesai ? String(item.estimasiSelesai) : '';
             if (!allSameDate && itemEst) {
-                str += fontSmall + italicOn + "  > Selesai: " + itemEst + italicOff + fontNormal + "\n";
+                str += fontSmall + "  > Selesai: " + itemEst + fontNormal + "\n";
             }
             if (index < items.length - 1) { str += "\n"; }
         });
 
         if (allSameDate && firstFull) {
-            str += italicOn + "\nSelesai: " + firstFull + italicOff + "\n";
+            str += "\nSelesai: " + firstFull + "\n";
         }
     } else { 
         str += (px['Layanan'] || '').replace(/\+/g, '\n\n') + "\n"; 
@@ -1482,6 +1473,7 @@ function generateRawTextReceipt(px) {
     str += "Terima Kasih\n";
     str += left;
     
+    // ZETTBOT FIX: Footer small, hemat baris maksimal & Indent Menjorok Sempurna
     str += fontSmall;
     str += wrapTextIndentRaw("1. ", "Pakaian luntur bukan tanggung jawab laundry.", 42);
     str += wrapTextIndentRaw("2. ", "Minimum laundry kiloan (1Kg).", 42);
@@ -1579,7 +1571,7 @@ function actionSendWA(idOverride) {
 
         if (items.length > 0) {
             items.forEach(function(item) {
-                var itemEst = item.estimasiSelesai ? String(item.estimasiSelesai).split(' - ')[0].split(' ')[0] : '';
+                var itemEst = item.estimasiSelesai ? String(item.estimasiSelesai) : '';
                 var estStr = (!allSameDate && itemEst) ? '\n  Selesai: _' + itemEst + '_' : '';
                 
                 if (currentPmb === 'Potong Kuota' && item.satuan === 'Kg') {
