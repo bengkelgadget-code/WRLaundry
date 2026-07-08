@@ -100,17 +100,15 @@ if (typeof window.google.script === 'undefined') {
                     database.ref('appData').once('value').then(snapshot => {
                         if (snapshot.exists() && snapshot.val().produksi) {
                             console.log("⚡ Memuat dari Firebase Instan");
-                            // ZETTBOT FIX: Pastikan data aman diconvert sebelum disuntikkan
                             var fbData = snapshot.val();
                             appData = typeof restoreFbKeys === 'function' ? restoreFbKeys(fbData) : fbData;
                             
-                            // ZETTBOT FIX: Safety check array sebelum sort agar tidak throw error
                             if(appData) {
                                 ['produksi', 'pelanggan', 'waktu', 'kiloan', 'satuan', 'pewangi', 'member', 'users'].forEach(function(k) {
                                     if (appData[k] && Array.isArray(appData[k]) && typeof sortDataByIdDesc === 'function') {
                                         appData[k] = sortDataByIdDesc(appData[k]);
                                     } else if (!appData[k]) {
-                                        appData[k] = []; // Fallback empty array
+                                        appData[k] = []; 
                                     }
                                 });
                             }
@@ -651,7 +649,6 @@ function saveSettings() {
     localStorage.setItem('zettSettings', JSON.stringify(appSettings)); closeModal('modal-settings'); applySettings(); showToast('Pengaturan berhasil disimpan!');
 }
 
-// INITIALIZATION & FIREBASE LISTENER
 document.addEventListener('DOMContentLoaded', function() {
     applySettings(); 
     
@@ -706,6 +703,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 if (newData.pelanggan && typeof cleanPhoneQuotes === 'function') {
                     newData.pelanggan = cleanPhoneQuotes(newData.pelanggan);
+                }
+                
+                if (typeof mergeProduksiData === 'function') {
+                    newData.produksi = mergeProduksiData(newData.produksi);
                 }
                 
                 ['produksi', 'pelanggan', 'waktu', 'kiloan', 'satuan', 'pewangi', 'member', 'users'].forEach(function(k) {
@@ -942,10 +943,12 @@ document.addEventListener('input', e => {
 var startY = 0;
 document.addEventListener('touchstart', e => { if(window.scrollY < 10) startY = e.touches[0].pageY; });
 document.addEventListener('touchend', e => {
+    // Cek apakah modal/form kasir sedang terbuka
     var modalStaff = document.getElementById('modal-staff-tx');
     var isModalOpen = modalStaff && !modalStaff.classList.contains('hidden');
 
     if(window.scrollY < 10 && e.changedTouches[0].pageY - startY > 150) {
+        // Jika form kasir terbuka, hentikan fungsi refresh
         if (isModalOpen) return; 
         
         showToast("Menyegarkan data...");
