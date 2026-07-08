@@ -100,18 +100,27 @@ if (typeof window.google.script === 'undefined') {
                     database.ref('appData').once('value').then(snapshot => {
                         if (snapshot.exists() && snapshot.val().produksi) {
                             console.log("⚡ Memuat dari Firebase Instan");
-                            appData = typeof restoreFbKeys === 'function' ? restoreFbKeys(snapshot.val()) : snapshot.val();
+                            // ZETTBOT FIX: Pastikan data aman diconvert sebelum disuntikkan
+                            var fbData = snapshot.val();
+                            appData = typeof restoreFbKeys === 'function' ? restoreFbKeys(fbData) : fbData;
                             
-                            ['produksi', 'pelanggan', 'waktu', 'kiloan', 'satuan', 'pewangi', 'member', 'users'].forEach(function(k) {
-                                if (appData[k] && typeof sortDataByIdDesc === 'function') appData[k] = sortDataByIdDesc(appData[k]);
-                            });
+                            // ZETTBOT FIX: Safety check array sebelum sort agar tidak throw error
+                            if(appData) {
+                                ['produksi', 'pelanggan', 'waktu', 'kiloan', 'satuan', 'pewangi', 'member', 'users'].forEach(function(k) {
+                                    if (appData[k] && Array.isArray(appData[k]) && typeof sortDataByIdDesc === 'function') {
+                                        appData[k] = sortDataByIdDesc(appData[k]);
+                                    } else if (!appData[k]) {
+                                        appData[k] = []; // Fallback empty array
+                                    }
+                                });
+                            }
                             
                             if(this._onSuccess) this._onSuccess(appData);
                             this._backgroundSyncGasToFirebase(); 
                         } else {
                             this._fetchFromGas();
                         }
-                    }).catch(e => { this._fetchFromGas(); });
+                    }).catch(e => { console.error("Firebase Error:", e); this._fetchFromGas(); });
                 } else {
                     this._fetchFromGas();
                 }
@@ -131,6 +140,8 @@ if (typeof window.google.script === 'undefined') {
                             database.ref('appData').set(typeof sanitizeFbKeys === 'function' ? sanitizeFbKeys(appData) : appData);
                         }
                         if (this._onSuccess) this._onSuccess(appData);
+                    } else {
+                        throw new Error("Gas return not success");
                     }
                 }).catch(err => { if (this._onFailure) this._onFailure(err); });
             },
@@ -644,7 +655,6 @@ function saveSettings() {
 document.addEventListener('DOMContentLoaded', function() {
     applySettings(); 
     
-    // ZETTBOT FIX: Set default filter transaksi Kasir ke 'Proses' saat aplikasi pertama kali dimuat
     var staffFilterStatus = document.getElementById('staff-filter-status');
     if (staffFilterStatus) {
         staffFilterStatus.value = 'Proses';
@@ -697,9 +707,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (newData.pelanggan && typeof cleanPhoneQuotes === 'function') {
                     newData.pelanggan = cleanPhoneQuotes(newData.pelanggan);
                 }
-                
-                // ZETTBOT FIX: Hapus mergeProduksiData di sini. Firebase adalah sumber kebenaran instan (Source of Truth).
-                // Jika data dihapus di Firebase, kita WAJIB menghapusnya di lokal, jangan di-merge/dibangkitkan lagi!
                 
                 ['produksi', 'pelanggan', 'waktu', 'kiloan', 'satuan', 'pewangi', 'member', 'users'].forEach(function(k) {
                     if (newData[k]) newData[k] = sortDataByIdDesc(newData[k]);
