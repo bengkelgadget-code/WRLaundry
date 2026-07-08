@@ -741,7 +741,17 @@ function fetchInitialData() {
     showLoading(true);
     if (typeof google !== 'undefined' && google.script && google.script.run) {
         google.script.run.withSuccessHandler(function(response) {
-            if(response && response.pelanggan) { response.pelanggan = response.pelanggan.map(function(p) { if(p['No Telpon']) { var hpStr = String(p['No Telpon']); if(hpStr.startsWith("'")) { hpStr = hpStr.substring(1); } p['No Telpon'] = hpStr; } return p; }); }
+            // ZETTBOT FIX: Tambahkan Array.isArray check sebelum .map()
+            if(response && response.pelanggan && Array.isArray(response.pelanggan)) { 
+                response.pelanggan = response.pelanggan.map(function(p) { 
+                    if(p && p['No Telpon']) { 
+                        var hpStr = String(p['No Telpon']); 
+                        if(hpStr.startsWith("'")) { hpStr = hpStr.substring(1); } 
+                        p['No Telpon'] = hpStr; 
+                    } 
+                    return p; 
+                }); 
+            }
             
             appData = response || {produksi:[], pelanggan:[], waktu:[], kiloan:[], satuan:[], pewangi:[], member:[], users:[]};
             
