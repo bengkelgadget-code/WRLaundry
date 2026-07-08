@@ -8,6 +8,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     
+<!-- ... existing code ... -->
     <!-- PWA REQUIRED TAGS -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#14b8a6">
@@ -30,8 +31,12 @@
 <div id="app-root" class="h-screen w-full flex overflow-hidden">
     
     <!-- AUDIO & GLOBALS -->
-    <audio id="sound-success" preload="auto"><source src="https://upload.wikimedia.org/wikipedia/commons/3/34/Sound_Effect_-_Success_01.ogg" type="audio/ogg"></audio>
+    <!-- ZETTBOT FIX: Ganti URL Audio yang mati ke link CDN yang stabil -->
+    <audio id="sound-success" preload="auto"><source src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3" type="audio/mp3"></audio>
 
+    <div id="loading" class="fixed inset-0 bg-white/95 backdrop-blur-sm z-[110] flex flex-col items-center justify-center transition-opacity duration-300">
+    <!-- ... existing code ... -->
+        
     <div id="loading" class="fixed inset-0 bg-white/95 backdrop-blur-sm z-[110] flex flex-col items-center justify-center transition-opacity duration-300">
         <div id="loading-icon-box" class="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-6 shadow-xl shadow-slate-900/20 animate-bounce transition-colors overflow-hidden">
             <i id="loading-icon" class="ph-bold ph-washing-machine text-3xl text-white"></i>
